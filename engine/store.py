@@ -43,10 +43,15 @@ class Store:
             return False
         if self.cleanup_if_expired(key):
             return False
-        expiry_time=time.time()+seconds
-        self._data[key].expiry=expiry_time
+        self._data[key].expiry=seconds
         return True
     
+    def expire_at(self, key, expiry_ts):
+        if key not in self._data:
+            return False
+        self._data[key].expiry = expiry_ts
+        return True
+
     def ttl(self,key):
         if key not in self._data:
             return -2  # key does not exist
