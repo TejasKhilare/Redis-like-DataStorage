@@ -17,7 +17,7 @@ class Store:
             return True
         return False
     
-    def set(self,key,value):
+    def set(self,key,value):  
         self._data[key]=Entry(value)
         self.eviction.insert(key)
         evicted=self.eviction.evict_if_needed()
@@ -38,16 +38,18 @@ class Store:
         self.eviction.remove(key)
         return existed
     
-    def expire(self,key,seconds):
-        if key not in self._data:
-            return False
-        if self.cleanup_if_expired(key):
-            return False
-        self._data[key].expiry=seconds
-        return True
+    # def expire(self,key,seconds):   no need because of expire_at.....
+    #     if key not in self._data:
+    #         return False
+    #     if self.cleanup_if_expired(key):
+    #         return False
+    #     self._data[key].expiry=seconds
+    #     return True
     
     def expire_at(self, key, expiry_ts):
         if key not in self._data:
+            return False
+        if self.cleanup_if_expired(key):
             return False
         self._data[key].expiry = expiry_ts
         return True

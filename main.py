@@ -1,21 +1,68 @@
+# main.py
+import asyncio
+from engine.server import start_server
 
-from engine.engine import Engine
-import time
-
-engine = Engine()
-
-# engine.execute("SET", "user", "tejas")
-# engine.execute("SET", "session", "xyz")
-# engine.execute("EXPIRE", "session", 20)
-# engine.execute("SET", "user", "khilare")
-
-print("Kill the process now and restart.")
+if __name__ == "__main__":
+    try:
+        asyncio.run(start_server())
+    except KeyboardInterrupt:
+        print("Server shutting down gracefully")
 
 
-print(engine.execute("GET", "user"))     # must exist
-print(engine.execute("GET", "session"))
-time.sleep(10)
-print(engine.execute("GET", "session"))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# from engine.engine import Engine
+# import time
+
+# engine = Engine()
+
+# engine.execute("SET", "user", {
+#     "id": 7,
+#     "name": "Tejas Khilare",
+#     "email": "tejas.khilare@example.com",
+#     "phone": "9876543210",
+#     "address": "Pune, Maharashtra, India",
+#     "age": 22,
+#     "role": "admin",
+#     "profile_pic": "tejas_profile.jpg",
+#     "document": "tejas_id_proof.pdf",
+#     "created_at": "2025-01-12T10:45:30",
+#     "updated_at": "2026-01-21T14:10:05"
+# })
+
+
+# print("Kill the process now and restart.")
+
+
+# print(engine.execute("GET", "user"))     # must exist
+
 
 
 
@@ -28,9 +75,13 @@ print(engine.execute("GET", "session"))
 # engine = Engine()
 
 # print("\n=== BASIC SET / GET ===")
-# print(engine.execute("SET", "a", "1"))     # ok
-# print(engine.execute("SET", "b", "2"))     # ok
-# print(engine.execute("GET", "a"))          # 1
+
+# engine.execute("SET", "a", 10) # ok
+
+# print(engine.execute("SET", "b", "2"))   
+#   # ok
+# print(engine.execute("GET", "a"))   
+    # 1
 # print(engine.execute("GET", "b"))          # 2
 
 # print("\n=== TTL (LAZY + ACTIVE EXPIRY) ===")
