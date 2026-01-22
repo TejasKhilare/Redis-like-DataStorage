@@ -6,7 +6,7 @@ class LRUEviction:
     def __init__(self,capacity):
         self.capacity=capacity
         self.order=OrderedDict()
-    
+  
     def access(self,key):
         if key in self.order:
             self.order.move_to_end(key)
