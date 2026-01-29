@@ -39,3 +39,12 @@ def test_ttl_no_expiry():
     e = Engine()
     e.execute("SET", "a", "1")
     assert e.execute("TTL", "a")["ttl"] == -1
+
+if __name__ == "__main__":
+    print("Running engine tests...")
+    test_set_get()
+    test_overwrite()
+    test_expiry()
+    test_ttl_no_key()
+    test_ttl_no_expiry()
+    print("All engine tests passed ")

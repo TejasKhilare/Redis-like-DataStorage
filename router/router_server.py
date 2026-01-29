@@ -53,13 +53,18 @@ async def handle_client(reader, writer):
     writer.close()
     await writer.wait_closed()
     print(f"Client disconnected: {addr}")
+try:
+    async def start_router():
+        server = await asyncio.start_server(handle_client, "127.0.0.1", 7000)
+        print("Shard Router running on port 7000")
 
-async def start_router():
-    server = await asyncio.start_server(handle_client, "127.0.0.1", 7000)
-    print("Shard Router running on port 7000")
-
-    async with server:
-        await server.serve_forever()
+        async with server:
+            await server.serve_forever()
+except KeyboardInterrupt:
+        print("Server shutting down gracefully")
 
 if __name__ == "__main__":
-    asyncio.run(start_router())
+    try:
+        asyncio.run(start_router())
+    except KeyboardInterrupt:
+        print("Server shutting down gracefully")
