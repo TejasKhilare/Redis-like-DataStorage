@@ -1,7 +1,7 @@
 🔴 Redis-Inspired Distributed In-Memory Datastore:
 A Redis-inspired distributed in-memory key-value datastore built from scratch in Python, 
 featuring TTL, LRU eviction, persistence, crash recovery, TCP networking, horizontal sharding 
-with consistent hashing, and shard-failure handling — and integrated with a real Flask + React application.
+with consistent hashing, and shard-failure handling.
 
 ✨ Features
 
