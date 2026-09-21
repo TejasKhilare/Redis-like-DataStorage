@@ -1,0 +1,50 @@
+# Three shards behind one router:  docker compose up --build
+#   REST API + docs  http://localhost:8000/docs
+#   TCP data plane   localhost:7000   (python -m kvstore.cli --port 7000)
+
+x-shard: &shard
+  build: .
+  image: kvstore:dev
+  restart: unless-stopped
+  environment: &shard-env
+    KV_NODE_ROLE: shard
+    KV_TCP_PORT: "6379"
+    KV_HTTP_PORT: "8000"
+
+services:
+  shard-1:
+    <<: *shard
+    environment: { <<: *shard-env, KV_NODE_ID: shard-1 }
+    volumes: [shard-1-data:/data]
+
+  shard-2:
+    <<: *shard
+    environment: { <<: *shard-env, KV_NODE_ID: shard-2 }
+    volumes: [shard-2-data:/data]
+
+  shard-3:
+    <<: *shard
+    environment: { <<: *shard-env, KV_NODE_ID: shard-3 }
+    volumes: [shard-3-data:/data]
+
+  router:
+    image: kvstore:dev
+    restart: unless-stopped
+    environment:
+      KV_NODE_ROLE: router
+      KV_NODE_ID: router
+      KV_TCP_PORT: "7000"
+      KV_HTTP_PORT: "8000"
+      KV_SHARDS: shard-1:6379,shard-2:6379,shard-3:6379
+    ports:
+      - "8000:8000"
+      - "7000:7000"
+    depends_on:
+      shard-1: { condition: service_healthy }
+      shard-2: { condition: service_healthy }
+      shard-3: { condition: service_healthy }
+
+volumes:
+  shard-1-data:
+  shard-2-data:
+  shard-3-data:
