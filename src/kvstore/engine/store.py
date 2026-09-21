@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 import time
-from collections.abc import Container, Iterator
+from collections.abc import Callable, Container, Iterator
 from typing import Any, TypeVar
 
 from kvstore.core.codec import SnapshotRecord
@@ -61,6 +61,12 @@ class Store:
         # Both are switched off while the AOF is replayed (see Engine.open).
         self.eviction_enabled = True
         self.expiry_enabled = True
+        # A replica never deletes a key on its own clock: an expired key reads
+        # as missing, and is deleted when the primary's DEL arrives (as in Redis).
+        self.expiry_deletes = True
+        # Called for every key deleted by expiry, so the deletion can be
+        # logged and replicated like any other write.
+        self.on_expire: Callable[[str], None] | None = None
         self.used_memory = 0
         self.expired_keys = 0
         self.evicted_keys = 0
@@ -223,6 +229,8 @@ class Store:
 
         Lazy expiry alone would leak memory for keys that are never read again.
         """
+        if not self.expiry_deletes:
+            return 0
         now = self._clock()
         total = 0
         for _ in range(_MAX_EXPIRY_ROUNDS):
@@ -232,9 +240,8 @@ class Store:
             expired = 0
             for key in sample:
                 if self._data[key].is_expired(now):
-                    self._remove(key)
+                    self._expire(key)
                     expired += 1
-            self.expired_keys += expired
             total += expired
             if expired * 4 <= len(sample):
                 break
@@ -275,6 +282,21 @@ class Store:
             records.append((key, type_name(value), payload, entry.expires_at))
         return records
 
+    def record(self, key: str) -> SnapshotRecord | None:
+        """One key as a snapshot record (DUMP, and moving a key to another shard)."""
+        entry = self._lookup(key)
+        if entry is None:
+            return None
+        value = entry.value
+        payload: Any
+        if isinstance(value, str):
+            payload = value
+        elif isinstance(value, ListValue | SetValue):
+            payload = list(value)
+        else:
+            payload = list(value.items())
+        return key, type_name(value), payload, entry.expires_at
+
     def load_record(self, record: SnapshotRecord) -> None:
         key, kind, payload, expires_at = record
         value: Value
@@ -307,10 +329,16 @@ class Store:
         if entry is None:
             return None
         if self.expiry_enabled and entry.is_expired(self._clock()):
-            self._remove(key)
-            self.expired_keys += 1
+            if self.expiry_deletes:
+                self._expire(key)
             return None
         return entry
+
+    def _expire(self, key: str) -> None:
+        self._remove(key)
+        self.expired_keys += 1
+        if self.on_expire is not None:
+            self.on_expire(key)
 
     def _insert(self, key: str, entry: Entry) -> None:
         entry.size = self._entry_size(key, entry.value)

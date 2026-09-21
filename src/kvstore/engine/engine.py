@@ -6,14 +6,15 @@ import os
 import random
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Protocol, Self
 
 from kvstore import __version__
+from kvstore.core.codec import SnapshotRecord
 from kvstore.core.exceptions import (
     CommandError,
     OutOfMemoryError,
@@ -32,6 +33,16 @@ _REDIS_POLICY_NAMES = {
     "random": "allkeys-random",
     "noeviction": "noeviction",
 }
+
+
+class ReplicationFeed(Protocol):
+    """Where the effects of writes go besides the AOF: the node's replication stream."""
+
+    def feed(self, command: str, args: Sequence[Any]) -> None:
+        """Record one effect (same as an AOF record)."""
+
+    def flush(self) -> None:
+        """Called at every commit: send what was fed to the replicas."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +108,10 @@ class Engine:
         )
         self._clock = clock
         self._replaying = False
+        # Set by the node that owns this engine (see kvstore.replication).
+        self.replication: ReplicationFeed | None = None
+        self.extra_info: Callable[[], dict[str, dict[str, Any]]] | None = None
+        self.store.on_expire = self._expired
         self._lock = threading.RLock()
         self._commit_depth = 0
         self._commands_processed = 0
@@ -204,17 +219,37 @@ class Engine:
         The caller must not send any reply before the block exits.
         """
         with self._lock:
-            self._commit_depth += 1
+            self.hold_commit()
             try:
                 yield
             finally:
-                self._commit_depth -= 1
-                if self._commit_depth == 0:
-                    self._commit()
+                self.release_commit()
+
+    def hold_commit(self) -> None:
+        """Defer AOF commits until the matching :meth:`release_commit`.
+
+        The split form of :meth:`deferred_commit`, for a hold that spans
+        several connections' batches (:class:`~kvstore.protocol.tcp_server.GroupCommit`).
+        """
+        with self._lock:
+            self._commit_depth += 1
+
+    def release_commit(self) -> None:
+        """End a hold; the last one out commits everything written meanwhile."""
+        with self._lock:
+            self._commit_depth -= 1
+            if self._commit_depth == 0:
+                self._commit()
 
     def _commit(self) -> None:
-        if self._persistence is not None:
-            self._persistence.commit()
+        try:
+            if self._persistence is not None:
+                self._persistence.commit()
+        finally:
+            # Replicas mirror the primary's memory, which already holds these
+            # writes even if the AOF commit failed.
+            if self.replication is not None:
+                self.replication.flush()
 
     # --------------------------------------------------- CommandContext
     @property
@@ -225,8 +260,59 @@ class Engine:
         return self._clock()
 
     def propagate(self, command: str, *args: Any) -> None:
-        if self._persistence is not None and self._persistence.is_open and not self._replaying:
+        if self._replaying:
+            return
+        if self._persistence is not None and self._persistence.is_open:
             self._persistence.append(command, args)
+        if self.replication is not None:
+            self.replication.feed(command, args)
+
+    def _expired(self, key: str) -> None:
+        # An expiry is a write like any other: logged, and sent to replicas,
+        # which never expire keys on their own clock.
+        self.propagate("DEL", key)
+
+    # ----------------------------------------------------------- replica
+    def apply_replicated(self, command: str, args: list[Any]) -> None:
+        """Run a command from the primary's replication stream.
+
+        Unlike :meth:`execute`: no stats, no eviction or OOM check (the
+        primary already decided), and no expiry while it runs -- the stream
+        says exactly which keys exist, so a key the replica's clock considers
+        expired must still be found. Effects still reach this node's own AOF.
+        """
+        spec = COMMANDS.get(command.upper())
+        if spec is None:
+            raise UnknownCommandError(f"unknown command '{command}'")
+        spec.check_arity(args)
+        with self._lock:
+            expiry, self.store.expiry_enabled = self.store.expiry_enabled, False
+            try:
+                self._run(spec, args, [k for k in spec.keys(args) if isinstance(k, str)])
+            finally:
+                self.store.expiry_enabled = expiry
+            if self._commit_depth == 0:
+                self._commit()
+
+    def load_snapshot(self, records: Iterable[SnapshotRecord]) -> int:
+        """Replace the whole keyspace (a replica's full resync); returns the key count.
+
+        With persistence on, the new state is saved at once (SAVE), so the
+        files never mix the old data with the new stream.
+        """
+        with self._lock:
+            self.store.clear()
+            expiry, self.store.expiry_enabled = self.store.expiry_enabled, False
+            count = 0
+            try:
+                for record in records:
+                    self.store.load_record(record)
+                    count += 1
+            finally:
+                self.store.expiry_enabled = expiry
+            if self._persistence is not None and self._persistence.is_open:
+                self.save()
+            return count
 
     def flush_all(self) -> None:
         self.store.clear()
@@ -258,6 +344,8 @@ class Engine:
         """Periodic housekeeping (Redis's serverCron): expire keys, finish/start rewrites."""
         with self._lock:
             expired = self.store.expire_cycle(expiry_sample_size)
+            if expired and self._commit_depth == 0:
+                self._commit()  # the DELs, to the AOF and the replicas
             if self._persistence is not None and self._persistence.is_open:
                 self._persistence.poll()
                 if self._persistence.should_auto_rewrite():
@@ -341,6 +429,8 @@ class Engine:
         }
         if info.keys:
             sections["keyspace"]["db0"] = f"keys={info.keys},expires={info.keys_with_ttl},avg_ttl=0"
+        if self.extra_info is not None:
+            sections.update(self.extra_info())
         return sections
 
 

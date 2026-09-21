@@ -7,12 +7,16 @@ share the same API code.
 
 from __future__ import annotations
 
+import inspect
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any
 
 from kvstore.cluster.router import ShardRouter
 from kvstore.core.exceptions import KeyNotFoundError
 from kvstore.engine import Engine
+from kvstore.protocol.tcp_server import GroupCommit
+from kvstore.replication.node import ShardNode
 
 
 class KVService(ABC):
@@ -60,13 +64,28 @@ class KVService(ABC):
 
 
 class LocalKVService(KVService):
-    def __init__(self, engine: Engine) -> None:
-        self.engine = engine
+    """Serves from this node: its engine, through the node's role checks if it has one."""
+
+    def __init__(self, target: Engine | ShardNode, group_commit: GroupCommit | None = None) -> None:
+        self._execute: Callable[..., Any] = target.execute
+        self._group_commit = group_commit
 
     async def execute(self, command: str, *args: Any) -> Any:
         # Commands are microseconds of CPU work, so they run inline on the
         # event loop -- serialized, like Redis -- instead of in a thread pool.
-        return self.engine.execute(command, *args)
+        if self._group_commit is None:
+            return await _resolve(self._execute(command, *args))
+        # Same rule as the RESP server: no reply before the shared commit.
+        committed = self._group_commit.join()
+        try:
+            return await _resolve(self._execute(command, *args))
+        finally:
+            await committed
+
+
+async def _resolve(result: Any) -> Any:
+    """``WAIT`` answers asynchronously; everything else synchronously."""
+    return await result if inspect.isawaitable(result) else result
 
 
 class RoutedKVService(KVService):

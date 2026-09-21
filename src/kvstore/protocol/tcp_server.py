@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AbstractContextManager, nullcontext, suppress
+from dataclasses import dataclass
 from typing import Any
 
 from kvstore.core.exceptions import KVStoreError, ProtocolError
@@ -17,23 +18,80 @@ logger = logging.getLogger(__name__)
 CommandHandler = Callable[..., Any]
 """``handler(command, *args)`` -> result (or an awaitable of it); raises :class:`KVStoreError`."""
 
+BatchHandler = Callable[[Sequence[list[str]]], Awaitable[list[Any]]]
+"""``handler(commands)`` -> one result per command, errors returned in place as exceptions."""
+
 BatchContext = Callable[[], AbstractContextManager[None]]
+
+
+@dataclass(frozen=True, slots=True)
+class Takeover:
+    """A command result that takes the connection over.
+
+    ``PSYNC`` returns one: from then on the socket carries a replication
+    stream, not request/reply traffic. Replies to the commands before it are
+    sent first; commands after it in the same read are dropped.
+    """
+
+    run: Callable[[asyncio.StreamReader, asyncio.StreamWriter], Awaitable[None]]
+
 
 _READ_SIZE = 64 * 1024
 _SHUTDOWN_TIMEOUT_S = 5.0
 
 
+class GroupCommit:
+    """One AOF commit (and fsync) for every connection served in an event-loop iteration.
+
+    A connection joins before running its batch and waits for the commit
+    before replying. The first to join schedules the commit with
+    ``call_soon``, so it runs after every other connection woken in the
+    same iteration has run its batch -- the equivalent of Redis flushing the
+    AOF once in ``beforeSleep`` for all clients. Under ``appendfsync
+    always``, N clients writing at once share one fsync instead of N.
+    """
+
+    def __init__(self, begin: Callable[[], None], commit: Callable[[], None]) -> None:
+        self._begin = begin
+        self._commit = commit
+        self._waiter: asyncio.Future[None] | None = None
+        self.commits = 0
+
+    def join(self) -> asyncio.Future[None]:
+        """Join the pending commit; await the result before sending any reply."""
+        if self._waiter is None:
+            loop = asyncio.get_running_loop()
+            self._begin()
+            self._waiter = loop.create_future()
+            loop.call_soon(self._flush)
+        return self._waiter
+
+    def _flush(self) -> None:
+        waiter, self._waiter = self._waiter, None
+        assert waiter is not None
+        self.commits += 1
+        try:
+            self._commit()
+        except Exception as exc:
+            waiter.set_exception(exc)
+            waiter.add_done_callback(lambda f: f.exception())  # retrieved even if nobody waits
+        else:
+            waiter.set_result(None)
+
+
 class TCPServer:
     """Serves RESP over TCP.
 
-    Every read may carry many pipelined commands. They are all executed
-    inside one ``batch()`` context before any reply is written, which lets a
-    shard commit the AOF once for the whole batch (group commit): one fsync
-    amortized over N writes, and still no reply before its write is durable.
+    Every read may carry many pipelined commands; all of them run before any
+    reply is written. There are three ways to run them:
 
-    A synchronous handler (the shard's ``engine.execute``) runs the batch
-    without yielding to the event loop, so no other client's commands can
-    interleave with it. An async handler (the router's) may await.
+    * ``batch_handler`` (the router): the whole batch at once, so commands
+      for different shards travel in parallel and those for one shard share
+      a round trip;
+    * ``group_commit`` (a shard): commands run synchronously, without
+      yielding, so no other client's commands interleave with the batch; then
+      the connection waits for the shared AOF commit before replying;
+    * ``handler`` alone, optionally inside a ``batch`` context manager.
     """
 
     def __init__(
@@ -44,12 +102,16 @@ class TCPServer:
         port: int,
         max_request_bytes: int = 64 * 1024 * 1024,
         batch: BatchContext | None = None,
+        batch_handler: BatchHandler | None = None,
+        group_commit: GroupCommit | None = None,
     ) -> None:
         self._handler = handler
         self._host = host
         self._port = port
         self._max_request_bytes = max_request_bytes
         self._batch: BatchContext = batch or nullcontext
+        self._batch_handler = batch_handler
+        self._group_commit = group_commit
         self._server: asyncio.Server | None = None
         self._connections: set[asyncio.StreamWriter] = set()
         self.connections_received = 0
@@ -100,9 +162,18 @@ class TCPServer:
                 if not data:
                     break
                 parser.feed(data)
-                replies, close = await self._run_batch(parser)
-                if replies:
-                    writer.write(b"".join(replies))
+                commands, trailer, close = self._drain(parser)
+                replies = await self._run(commands) if commands else []
+                takeover = next((r for r in replies if isinstance(r, Takeover)), None)
+                if takeover is not None:
+                    before = replies[: replies.index(takeover)]
+                    writer.write(b"".join(r for r in before if isinstance(r, bytes)))
+                    await writer.drain()
+                    await takeover.run(reader, writer)
+                    break
+                out = [r for r in replies if isinstance(r, bytes)] + trailer
+                if out:
+                    writer.write(b"".join(out))
                     await writer.drain()
                 if close:
                     break
@@ -119,32 +190,58 @@ class TCPServer:
                 await writer.wait_closed()
             logger.debug("client disconnected", extra={"peer": peer})
 
-    async def _run_batch(self, parser: RequestParser) -> tuple[list[bytes], bool]:
-        replies: list[bytes] = []
-        with self._batch():
-            while True:
-                try:
-                    command = parser.next_command()
-                except ProtocolError as exc:
-                    replies.append(encode_error(exc))
-                    return replies, True  # the stream is out of sync: hang up, like Redis
-                if command is None:
-                    return replies, False
-                if not command:
-                    continue
-                if command[0].upper() == "QUIT":
-                    replies.append(encode_reply(OK))
-                    return replies, True
-                replies.append(await self._respond(command))
+    @staticmethod
+    def _drain(parser: RequestParser) -> tuple[list[list[str]], list[bytes], bool]:
+        """Every complete command received so far, plus a final reply that ends the batch.
 
-    async def _respond(self, command: list[str]) -> bytes:
+        The trailer is ``QUIT``'s OK or a protocol error; either one closes the
+        connection after the commands before it have been answered.
+        """
+        commands: list[list[str]] = []
+        while True:
+            try:
+                command = parser.next_command()
+            except ProtocolError as exc:
+                return commands, [encode_error(exc)], True  # out of sync: hang up, like Redis
+            if command is None:
+                return commands, [], False
+            if not command:
+                continue
+            if command[0].upper() == "QUIT":
+                return commands, [encode_reply(OK)], True
+            commands.append(command)
+
+    async def _run(self, commands: list[list[str]]) -> list[bytes | Takeover]:
+        if self._batch_handler is not None:
+            results = await self._batch_handler(commands)
+            return [_encode_result(result) for result in results]
+        if self._group_commit is not None:
+            committed = self._group_commit.join()
+            replies = [await self._respond(command) for command in commands]
+            await committed  # raises if the shared commit failed
+            return replies
+        with self._batch():
+            return [await self._respond(command) for command in commands]
+
+    async def _respond(self, command: list[str]) -> bytes | Takeover:
         try:
             result = self._handler(*command)
             if inspect.isawaitable(result):
                 result = await result
+            if isinstance(result, Takeover):
+                return result
             return encode_reply(result)
         except KVStoreError as exc:
             return encode_error(exc)
         except Exception:
             logger.exception("unhandled error while executing a command")
             return encode_error(KVStoreError("internal error"))
+
+
+def _encode_result(result: Any) -> bytes:
+    if isinstance(result, KVStoreError):
+        return encode_error(result)
+    if isinstance(result, BaseException):
+        logger.error("unhandled error while executing a command", exc_info=result)
+        return encode_error(KVStoreError("internal error"))
+    return encode_reply(result)

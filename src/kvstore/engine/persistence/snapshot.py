@@ -17,6 +17,7 @@ The CRC is verified *before* any record is loaded.
 
 from __future__ import annotations
 
+import io
 import os
 import struct
 import zlib
@@ -68,20 +69,32 @@ def write_snapshot(path: Path, records: Sequence[SnapshotRecord], *, created_at:
     """Write the snapshot atomically; returns its size in bytes."""
     tmp = path.with_name(path.name + ".tmp")
     with tmp.open("wb") as file:
-        out = _ChecksummedWriter(file)
-        out.write(_HEADER.pack(MAGIC, VERSION, round(created_at * 1000), len(records)))
-        for key, kind, payload, expires_at in records:
-            expires_ms = -1 if expires_at is None else round(expires_at * 1000)
-            out.write(_RECORD.pack(_TYPE_CODES[kind], expires_ms))
-            out.write_str(key)
-            _write_payload(out, kind, payload)
-        out.write(bytes([_EOF]))
-        out.flush()
-        file.write(_U32.pack(out.crc))
+        size = _write(file, records, created_at)
         file.flush()
         os.fsync(file.fileno())
     os.replace(tmp, path)
     fsync_dir(path.parent)
+    return size
+
+
+def encode_snapshot(records: Sequence[SnapshotRecord], *, created_at: float) -> bytes:
+    """The same format in memory: what a primary sends a replica on a full resync."""
+    buffer = io.BytesIO()
+    _write(buffer, records, created_at)
+    return buffer.getvalue()
+
+
+def _write(file: IO[bytes], records: Sequence[SnapshotRecord], created_at: float) -> int:
+    out = _ChecksummedWriter(file)
+    out.write(_HEADER.pack(MAGIC, VERSION, round(created_at * 1000), len(records)))
+    for key, kind, payload, expires_at in records:
+        expires_ms = -1 if expires_at is None else round(expires_at * 1000)
+        out.write(_RECORD.pack(_TYPE_CODES[kind], expires_ms))
+        out.write_str(key)
+        _write_payload(out, kind, payload)
+    out.write(bytes([_EOF]))
+    out.flush()
+    file.write(_U32.pack(out.crc))
     return out.size + _U32.size
 
 
@@ -105,7 +118,13 @@ def _write_payload(out: _ChecksummedWriter, kind: str, payload: Any) -> None:
 
 def read_snapshot(path: Path) -> Iterator[SnapshotRecord]:
     """Yield every record; raises :class:`SnapshotCorruptedError` before yielding anything bad."""
-    data = memoryview(path.read_bytes())
+    return decode_snapshot(path.read_bytes(), source=str(path))
+
+
+def decode_snapshot(raw: bytes, *, source: str = "snapshot") -> Iterator[SnapshotRecord]:
+    """Decode an in-memory snapshot, checking its CRC before yielding any record."""
+    data = memoryview(raw)
+    path = source
     if len(data) < _HEADER.size + 1 + _U32.size:
         raise SnapshotCorruptedError(f"{path}: file too short")
     body, (expected_crc,) = data[: -_U32.size], _U32.unpack(data[-_U32.size :])
@@ -180,3 +199,34 @@ def fsync_dir(directory: Path) -> None:
         pass
     finally:
         os.close(fd)
+
+
+# ------------------------------------------------------- single values
+_DUMP_VERSION = 1
+
+
+def dump_value(kind: str, payload: Any) -> bytes:
+    """One value in the snapshot encoding plus a CRC: the payload of DUMP / RESTORE."""
+    buffer = io.BytesIO()
+    out = _ChecksummedWriter(buffer)
+    out.write(bytes([_DUMP_VERSION, _TYPE_CODES[kind]]))
+    _write_payload(out, kind, payload)
+    out.flush()
+    buffer.write(_U32.pack(out.crc))
+    return buffer.getvalue()
+
+
+def load_value(data: bytes) -> tuple[str, Any]:
+    """Decode :func:`dump_value`'s output; raises ``ValueError`` if it is damaged."""
+    if len(data) < 2 + _U32.size:
+        raise ValueError("DUMP payload too short")
+    body, (expected,) = memoryview(data)[: -_U32.size], _U32.unpack(data[-_U32.size :])
+    if zlib.crc32(body) != expected or body[0] != _DUMP_VERSION:
+        raise ValueError("DUMP payload version or checksum not valid")
+    try:
+        kind = _TYPE_NAMES[body[1]]
+        reader = _Reader(body, 2)
+        payload = _read_payload(reader, kind)
+    except (KeyError, struct.error, IndexError) as exc:
+        raise ValueError(f"malformed DUMP payload: {exc!r}") from exc
+    return kind, payload
