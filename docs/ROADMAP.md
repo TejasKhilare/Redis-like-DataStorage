@@ -34,17 +34,27 @@ Every phase ends with passing CI, tests for new code, and an updated README and 
 - [x] MISCONF: refuse writes after an AOF write failure
 - [x] 237 tests, 97% coverage, mypy --strict
 
-## Phase 3: Benchmarks (round 1)
+## Phase 3: Benchmarks (round 1) ✅
 
-- [ ] Load generator: throughput, p50/p99/p999 latency
-- [ ] Compare RESP with HTTP, the fsync policies, pipelining on and off, and real Redis as a baseline
-- [ ] Publish `docs/BENCHMARKS.md` with charts and reproduction steps
+- [x] asyncio load generator (RESP and HTTP): throughput, p50/p99/p99.9, HDR-style mergeable
+      histograms, multi-process
+- [x] Closed loop for capacity; open loop with coordinated-omission correction for latency under load
+- [x] Suite of 25 scenarios × 3 interleaved runs: RESP vs HTTP, fsync policies, group commit,
+      pipelining, read/write mix, router, real Redis 7.2 as the baseline, redis-benchmark
+- [x] Rewrite pause vs keyspace size (the price of not using fork())
+- [x] `docs/BENCHMARKS.md` with charts (light and dark), tables, raw results and reproduction steps
+- [x] 307 tests, 97% coverage
 
 ## Phase 4: Distributed systems
 
-- [ ] Router: forward a client's pipeline to each shard as one pipeline. Today every command
-      is its own round trip: 3,000 pipelined SETs through the router took ~7 s with
-      fsync=always, against ~0.1 s straight to a shard (measured on Windows during Phase 2).
+Targets from the Phase 3 numbers:
+- [ ] Router: forward a client's pipeline to each shard as one pipeline. The router runs at 23% of
+      a direct shard's throughput (3,897 vs 17,150 ops/s), and pipelining through it gains 1.3×
+      instead of 2.7×.
+- [ ] Group commit across connections: one AOF fsync per event-loop iteration, as Redis does.
+      With `appendfsync always`, kvstore does 406 SETs/s against Redis's 7,389.
+- [ ] Cheaper AOF record encoding (JSON today); writes cost 36% of throughput.
+- [ ] Incremental keyspace copy for rewrites: the copy pauses the server 369 ms at 1M keys.
 - [ ] Router connection pooling, retries, timeouts
 - [ ] Primary-replica async replication with offsets
 - [ ] Heartbeats, failure detection, failover with epochs (no split-brain)

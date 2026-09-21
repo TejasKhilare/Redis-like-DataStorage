@@ -12,7 +12,7 @@ node also serves a **FastAPI control plane** for REST access, health checks
 and introspection.
 
 ![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
-![tests](https://img.shields.io/badge/tests-237%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-307%20passing-brightgreen)
 ![coverage](https://img.shields.io/badge/coverage-97%25-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-blue)
 
@@ -160,6 +160,38 @@ r.rpush("queue", "job-1", "job-2")
 
 Every setting is a `KV_*` environment variable; see [.env.example](.env.example).
 
+## Benchmarks
+
+Measured against Redis 7.2 on the same machine (a 2-core laptop, Linux in
+WSL2). There are 25 scenarios, each run 3 times, plus redis-benchmark and an
+open-loop latency sweep. Full results, charts and methodology:
+**[docs/BENCHMARKS.md](docs/BENCHMARKS.md)**.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/benchmarks/throughput-dark.png">
+  <img alt="Throughput for the same workload: Redis 39,139, kvstore RESP 17,150, kvstore via router 3,897, kvstore HTTP 1,032 ops/s" src="docs/benchmarks/throughput-light.png">
+</picture>
+
+| 50 clients, 64 B values | kvstore | Redis 7.2 |
+|---|--:|--:|
+| 90% GET, no pipelining | 17,150 ops/s, p50 2.6 ms | 39,139 ops/s, p50 1.3 ms |
+| 90% GET, pipeline depth 64 | 53,766 ops/s | 213,894 ops/s (client-bound) |
+| 100% SET, `appendfsync always` | 406 ops/s | 7,389 ops/s |
+| 100% SET, `appendfsync everysec` | 12,679 ops/s | 40,565 ops/s |
+| Rewrite pause, 1M keys | 369 ms (no fork) | uses fork() |
+
+kvstore reaches 44% of Redis's throughput when clients wait for each reply,
+and about 12% when both are CPU-bound. The benchmarks also found the next
+optimization targets:
+- **Group commit across clients** (`always` is 18× behind Redis).
+- **Pipelining in the router**, which costs 77% of throughput today.
+- **An incremental snapshot copy.**
+
+```bash
+python -m benchmarks.load_gen --port 6379 -c 50 -P 16     # quick measurement
+make bench REDIS=path/to/redis/src && make bench-report   # the whole suite
+```
+
 ## Project layout
 
 ```text
@@ -175,14 +207,15 @@ src/kvstore/
 ├── cluster/                hash ring, router (hash tags, fan-out)
 ├── api/ schemas/ services/ FastAPI control plane
 └── cli.py                  redis-cli style client
-tests/                      237 tests: unit, integration, redis-py compatibility, crash recovery
-docs/                       roadmap, architecture decision records
+benchmarks/                 load generator (RESP/HTTP, open/closed loop), suite, report, results
+tests/                      307 tests: unit, integration, redis-py compatibility, crash recovery
+docs/                       benchmarks, roadmap, architecture decision records
 ```
 
 ## Development
 
 ```bash
-python -m pytest --cov     # 237 tests, ~25s
+python -m pytest --cov     # 307 tests, ~65s
 ruff check . && mypy       # lint + strict typing
 ```
 
@@ -194,9 +227,10 @@ ruff check . && mypy       # lint + strict typing
 - [ADR-0004](docs/adr/0004-stateless-router-with-consistent-hashing.md): a stateless router with consistent hashing
 - [ADR-0005](docs/adr/0005-resp-and-the-value-model.md): RESP and the value model
 - [ADR-0006](docs/adr/0006-forkless-rewrite-fsync-and-group-commit.md): rewrite without fork(), fsync policies, group commit
+- [ADR-0007](docs/adr/0007-benchmark-methodology.md): benchmark methodology
 
-The roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md). Phase 3 benchmarks
-throughput and tail latency against real Redis.
+The roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md). Phase 4 adds replication,
+failover and router pipelining.
 
 ## License
 
