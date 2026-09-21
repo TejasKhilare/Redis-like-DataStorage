@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.metadata
 import io
 import json
 import os
@@ -273,10 +274,8 @@ def environment(options: SuiteOptions) -> dict[str, Any]:
         0,
     )  # fmt: skip
     try:
-        import uvloop  # type: ignore[import-not-found, unused-ignore]
-
-        loop = f"uvloop {uvloop.__version__}"
-    except ImportError:
+        loop = f"uvloop {importlib.metadata.version('uvloop')}"  # what run_event_loop uses
+    except importlib.metadata.PackageNotFoundError:
         loop = "asyncio"
     root = Path(__file__).resolve().parent.parent
     return {
