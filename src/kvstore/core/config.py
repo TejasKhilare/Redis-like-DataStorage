@@ -10,7 +10,8 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 NodeRole = Literal["shard", "router"]
-EvictionPolicyName = Literal["lru"]
+EvictionPolicyName = Literal["lru", "lfu", "random", "noeviction"]
+FsyncPolicyName = Literal["always", "everysec", "no"]
 
 
 class Settings(BaseSettings):
@@ -30,17 +31,23 @@ class Settings(BaseSettings):
     http_port: int = Field(default=8000, ge=0, le=65535)
     tcp_port: int = Field(default=6379, ge=0, le=65535)
     tcp_enabled: bool = True
-    max_request_bytes: int = Field(default=1024 * 1024, gt=0)
+    max_request_bytes: int = Field(
+        default=64 * 1024 * 1024, gt=0, description="Largest accepted bulk string."
+    )
 
     # ---- storage engine (shard only)
-    max_keys: int = Field(default=10_000, gt=0)
+    max_keys: int = Field(default=0, ge=0, description="0 = unlimited.")
+    maxmemory_bytes: int = Field(default=0, ge=0, description="0 = unlimited.")
     eviction_policy: EvictionPolicyName = "lru"
-    active_expiry_interval_s: float = Field(default=0.1, gt=0)
+    cron_interval_s: float = Field(default=0.1, gt=0, description="Housekeeping tick (hz 10).")
     active_expiry_sample_size: int = Field(default=20, gt=0)
 
     # ---- persistence (shard only)
     data_dir: Path | None = Field(default=None, description="Defaults to './data/<node_id>'.")
     aof_enabled: bool = True
+    aof_fsync: FsyncPolicyName = "everysec"
+    aof_rewrite_percentage: int = Field(default=100, ge=0, description="0 disables auto-rewrite.")
+    aof_rewrite_min_bytes: int = Field(default=64 * 1024 * 1024, ge=0)
 
     # ---- cluster (router only)
     shards: Annotated[list[str], NoDecode] = Field(
@@ -87,11 +94,6 @@ class Settings(BaseSettings):
         if self.node_role == "router" and not self.shards:
             raise ValueError("router requires at least one shard in KV_SHARDS")
         return self
-
-    @property
-    def aof_path(self) -> Path:
-        assert self.data_dir is not None  # filled in by _fill_defaults
-        return self.data_dir / "appendonly.aof"
 
 
 @lru_cache

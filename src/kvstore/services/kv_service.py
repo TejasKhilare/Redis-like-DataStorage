@@ -20,13 +20,13 @@ class KVService(ABC):
     async def execute(self, command: str, *args: Any) -> Any:
         """Run one raw command."""
 
-    async def get(self, key: str) -> Any:
-        value = await self.execute("GET", key)
+    async def get(self, key: str) -> str:
+        value: str | None = await self.execute("GET", key)
         if value is None:
             raise KeyNotFoundError(f"key '{key}' not found")
         return value
 
-    async def set(self, key: str, value: Any, ttl_seconds: int | None = None) -> None:
+    async def set(self, key: str, value: str, ttl_seconds: int | None = None) -> None:
         args: list[Any] = [key, value]
         if ttl_seconds is not None:
             args += ["EX", ttl_seconds]
@@ -51,6 +51,12 @@ class KVService(ABC):
         # PERSIST answers 0 both for "missing" and "had no TTL"; only the first is an error.
         if await self.execute("PERSIST", key) == 0 and await self.execute("EXISTS", key) == 0:
             raise KeyNotFoundError(f"key '{key}' not found")
+
+    async def key_type(self, key: str) -> str:
+        kind = str(await self.execute("TYPE", key))
+        if kind == "none":
+            raise KeyNotFoundError(f"key '{key}' not found")
+        return kind
 
 
 class LocalKVService(KVService):

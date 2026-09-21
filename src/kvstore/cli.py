@@ -1,10 +1,9 @@
-"""Interactive command-line client for the TCP data plane.
+"""Interactive command-line client, redis-cli style (speaks RESP, so it works against Redis too).
 
-    python -m kvstore.cli --port 7000                 # REPL against the router
-    python -m kvstore.cli --port 6379 SET greeting hi # one-shot
+    python -m kvstore.cli --port 7000                  # REPL against the router
+    python -m kvstore.cli --port 6379 SET greeting hi  # one-shot
 
-Arguments are strings; wrap JSON in single quotes to send objects or arrays:
-    SET user:1 '{"name": "tejas", "age": 22}'
+Quote arguments containing spaces: SET user:1 '{"name": "tejas"}'
 """
 
 from __future__ import annotations
@@ -18,34 +17,38 @@ from typing import Any
 
 from kvstore.core.exceptions import KVStoreError
 from kvstore.protocol.client import KVClient
+from kvstore.protocol.resp import SimpleString
 
 
-def parse_token(token: str) -> Any:
-    """JSON objects, arrays and quoted strings are decoded; everything else stays a string."""
-    if token[:1] in '{["':
-        try:
-            return json.loads(token)
-        except ValueError:
-            pass
-    return token
-
-
-def format_result(result: Any) -> str:
+def format_result(result: Any, indent: int = 0) -> str:
+    if isinstance(result, KVStoreError):
+        return f"(error) {result.to_resp()}"
     if result is None:
         return "(nil)"
-    if isinstance(result, int) and not isinstance(result, bool):
+    if isinstance(result, SimpleString):
+        return str(result)
+    if isinstance(result, int):
         return f"(integer) {result}"
     if isinstance(result, str):
-        return result
-    return json.dumps(result, indent=2)
+        return json.dumps(result, ensure_ascii=False)
+    if isinstance(result, list):
+        if not result:
+            return "(empty array)"
+        width = len(str(len(result)))
+        lines = []
+        for i, item in enumerate(result, 1):
+            prefix = f"{i:>{width}}) "
+            body = format_result(item, indent + len(prefix))
+            lines.append((" " * indent if i > 1 else "") + prefix + body)
+        return "\n".join(lines)
+    return str(result)
 
 
 async def run_command(client: KVClient, tokens: list[str]) -> tuple[bool, str]:
-    command, *args = tokens
     try:
-        result = await client.execute(command, *(parse_token(arg) for arg in args))
+        result = await client.execute(*tokens)
     except KVStoreError as exc:
-        return False, f"(error) {exc.code}: {exc.message}"
+        return False, format_result(exc)
     return True, format_result(result)
 
 

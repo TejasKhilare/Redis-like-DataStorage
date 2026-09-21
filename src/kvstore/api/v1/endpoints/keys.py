@@ -8,7 +8,13 @@ from fastapi import APIRouter, Response, status
 
 from kvstore.api.deps import KVServiceDep
 from kvstore.schemas.common import ErrorResponse
-from kvstore.schemas.keys import ExpireRequest, KeyTTLResponse, KeyValueResponse, SetKeyRequest
+from kvstore.schemas.keys import (
+    ExpireRequest,
+    KeyTTLResponse,
+    KeyTypeResponse,
+    KeyValueResponse,
+    SetKeyRequest,
+)
 
 router = APIRouter(
     prefix="/keys",
@@ -26,7 +32,13 @@ _NOT_FOUND: dict[int | str, dict[str, Any]] = {
 
 @router.get("/{key}", responses=_NOT_FOUND)
 async def get_key(key: str, service: KVServiceDep) -> KeyValueResponse:
+    """Read a string value (other types: use ``POST /v1/commands``; they answer WRONGTYPE here)."""
     return KeyValueResponse(key=key, value=await service.get(key))
+
+
+@router.get("/{key}/type", responses=_NOT_FOUND)
+async def get_type(key: str, service: KVServiceDep) -> KeyTypeResponse:
+    return KeyTypeResponse(key=key, type=await service.key_type(key))
 
 
 @router.put("/{key}")

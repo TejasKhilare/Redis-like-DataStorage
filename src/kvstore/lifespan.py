@@ -1,7 +1,7 @@
 """Startup and shutdown for each node role.
 
 One process serves two planes that share the same event loop:
-* data plane    -- the TCP server (low overhead, what clients and the router use);
+* data plane    -- the RESP TCP server (what clients, redis-cli and the router use);
 * control plane -- the FastAPI app (REST API, health, admin, docs).
 """
 
@@ -18,15 +18,17 @@ from fastapi import FastAPI
 from kvstore.cluster.router import ShardRouter
 from kvstore.core.config import Settings
 from kvstore.engine import Engine
-from kvstore.engine.expiry import run_active_expiry
-from kvstore.protocol.tcp_server import CommandHandler, TCPServer
+from kvstore.engine.cron import run_cron
+from kvstore.protocol.tcp_server import BatchContext, CommandHandler, TCPServer
 from kvstore.schemas.common import ReadinessResponse
 from kvstore.services.kv_service import LocalKVService, RoutedKVService
 
 logger = logging.getLogger(__name__)
 
 
-def _tcp_server(settings: Settings, handler: CommandHandler) -> TCPServer | None:
+def _tcp_server(
+    settings: Settings, handler: CommandHandler, batch: BatchContext | None = None
+) -> TCPServer | None:
     if not settings.tcp_enabled:
         return None
     return TCPServer(
@@ -34,31 +36,45 @@ def _tcp_server(settings: Settings, handler: CommandHandler) -> TCPServer | None
         host=settings.host,
         port=settings.tcp_port,
         max_request_bytes=settings.max_request_bytes,
+        batch=batch,
+    )
+
+
+def build_engine(settings: Settings) -> Engine:
+    return Engine(
+        max_keys=settings.max_keys,
+        maxmemory=settings.maxmemory_bytes,
+        eviction_policy=settings.eviction_policy,
+        data_dir=settings.data_dir if settings.aof_enabled else None,
+        aof_fsync=settings.aof_fsync,
+        aof_rewrite_percentage=settings.aof_rewrite_percentage,
+        aof_rewrite_min_bytes=settings.aof_rewrite_min_bytes,
     )
 
 
 @asynccontextmanager
 async def shard_lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
-    engine = Engine(
-        max_keys=settings.max_keys,
-        eviction_policy=settings.eviction_policy,
-        aof_path=settings.aof_path if settings.aof_enabled else None,
-    )
-    engine.open()  # replays the AOF; blocking is fine before we accept traffic
+    engine = build_engine(settings)
+    engine.open()  # loads snapshot + AOF; blocking is fine before we accept traffic
     service = LocalKVService(engine)
-    tcp_server = _tcp_server(settings, service.execute)
-    expiry_task = asyncio.create_task(
-        run_active_expiry(
+    # The engine's execute is synchronous, so a pipelined batch runs atomically
+    # and commits the AOF once (group commit) before any reply goes out.
+    tcp_server = _tcp_server(settings, engine.execute, engine.deferred_commit)
+    cron_task = asyncio.create_task(
+        run_cron(
             engine,
-            interval_s=settings.active_expiry_interval_s,
-            sample_size=settings.active_expiry_sample_size,
+            interval_s=settings.cron_interval_s,
+            expiry_sample_size=settings.active_expiry_sample_size,
         ),
-        name="active-expiry",
+        name="cron",
     )
 
     async def readiness_probe() -> ReadinessResponse:
         checks = {"engine": "ok"}
+        persistence = engine.persistence
+        if persistence is not None:
+            checks["persistence"] = "down" if persistence.write_error else "ok"
         if tcp_server is not None:
             checks["tcp"] = "ok" if tcp_server.is_serving else "down"
         ready = all(value == "ok" for value in checks.values())
@@ -75,15 +91,23 @@ async def shard_lifespan(app: FastAPI) -> AsyncIterator[None]:
         info = engine.info()
         logger.info(
             "shard started",
-            extra={"keys": info.keys, "aof_records_loaded": info.aof_records_loaded},
+            extra={
+                "keys": info.keys,
+                "snapshot_keys_loaded": info.persistence.snapshot_keys_loaded
+                if info.persistence
+                else 0,
+                "aof_records_loaded": info.persistence.aof_records_loaded
+                if info.persistence
+                else 0,
+            },
         )
         yield
     finally:
         if tcp_server is not None:
             await tcp_server.stop()
-        expiry_task.cancel()
+        cron_task.cancel()
         with suppress(asyncio.CancelledError):
-            await expiry_task
+            await cron_task
         engine.close()
         logger.info("shard stopped")
 

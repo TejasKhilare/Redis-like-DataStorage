@@ -14,12 +14,16 @@ from kvstore.core.exceptions import (
     KeyNotFoundError,
     KVStoreError,
     NodeUnavailableError,
+    OutOfMemoryError,
+    PersistenceWriteError,
     ProtocolError,
 )
 from kvstore.schemas.common import ErrorBody, ErrorResponse
 
 _STATUS_BY_ERROR: dict[type[KVStoreError], int] = {
     KeyNotFoundError: status.HTTP_404_NOT_FOUND,
+    OutOfMemoryError: status.HTTP_507_INSUFFICIENT_STORAGE,
+    PersistenceWriteError: status.HTTP_503_SERVICE_UNAVAILABLE,
     CommandError: status.HTTP_400_BAD_REQUEST,
     ProtocolError: status.HTTP_400_BAD_REQUEST,
     CrossShardError: status.HTTP_400_BAD_REQUEST,
