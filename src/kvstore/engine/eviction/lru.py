@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Container
 
 from kvstore.engine.eviction.base import EvictionPolicy
 
@@ -11,8 +12,8 @@ class LRUPolicy(EvictionPolicy):
     """Exact LRU backed by an ``OrderedDict`` (a hash map + doubly linked list).
 
     Oldest key at the front, most recently used at the back. Redis uses
-    *approximate* LRU (sampling 5 keys) to save the 16 bytes of list pointers
-    per key; exact LRU is simpler and fine at this scale.
+    *approximate* LRU (sampling a few keys) to save the list pointers per
+    key; exact LRU is simpler and fine at this scale.
     """
 
     name = "lru"
@@ -31,8 +32,14 @@ class LRUPolicy(EvictionPolicy):
     def on_remove(self, key: str) -> None:
         self._order.pop(key, None)
 
-    def victim(self) -> str | None:
-        return next(iter(self._order), None)
+    def victim(self, protect: Container[str] = ()) -> str | None:
+        for key in self._order:  # oldest first; protected keys are rare
+            if key not in protect:
+                return key
+        return None
+
+    def clear(self) -> None:
+        self._order.clear()
 
     def __len__(self) -> int:
         return len(self._order)
