@@ -1,8 +1,11 @@
 """Exception hierarchy shared by every layer.
 
-Each error carries a stable machine-readable ``code``. The code travels over
-the wire (TCP and HTTP), so a client -- including the router talking to a
-shard -- can rebuild the exact exception type on its side.
+Each error has two stable identifiers:
+
+* ``code`` -- used in HTTP error bodies (``{"error": {"code": ...}}``);
+* ``resp_prefix`` -- the first word of a RESP error reply (``-WRONGTYPE ...``),
+  exactly like Redis. Clients (including the router) rebuild the error type
+  from it via :meth:`KVStoreError.from_resp`.
 """
 
 from __future__ import annotations
@@ -14,30 +17,36 @@ class KVStoreError(Exception):
     """Base class for all kvstore errors."""
 
     code: ClassVar[str] = "INTERNAL_ERROR"
-    _registry: ClassVar[dict[str, type[KVStoreError]]] = {}
+    resp_prefix: ClassVar[str] = "ERR"
+    _by_prefix: ClassVar[dict[str, type[KVStoreError]]] = {}
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        if "code" in cls.__dict__:  # only classes that declare their own code
-            KVStoreError._registry[cls.code] = cls
+        if "resp_prefix" in cls.__dict__:  # only classes that declare their own prefix
+            KVStoreError._by_prefix[cls.resp_prefix] = cls
 
-    def __init__(self, message: str = "") -> None:
-        super().__init__(message or self.__class__.__name__)
+    def __init__(self, message: str = "", *, prefix: str | None = None) -> None:
         self.message = message or self.__class__.__name__
+        self.prefix = prefix or self.resp_prefix
+        super().__init__(self.message)
 
-    @classmethod
-    def from_code(cls, code: str, message: str) -> KVStoreError:
-        """Rebuild an error received over the wire."""
-        error_cls = cls._registry.get(code, KVStoreError)
-        return error_cls(message)
+    def to_resp(self) -> str:
+        """The error line as sent over RESP (without the leading '-')."""
+        return f"{self.prefix} {self.message}"
 
-
-KVStoreError._registry[KVStoreError.code] = KVStoreError
+    @staticmethod
+    def from_resp(text: str) -> KVStoreError:
+        """Rebuild an error received as a RESP error reply."""
+        prefix, _, message = text.partition(" ")
+        if not prefix.isupper():
+            return CommandError(text)
+        error_cls = KVStoreError._by_prefix.get(prefix, CommandError)
+        return error_cls(message, prefix=prefix)
 
 
 # --------------------------------------------------------------- commands
 class CommandError(KVStoreError):
-    """The client sent a command the engine refuses to run."""
+    """The client sent a command the engine refuses to run (``-ERR ...``)."""
 
     code = "COMMAND_ERROR"
 
@@ -54,15 +63,40 @@ class InvalidArgumentError(CommandError):
     code = "INVALID_ARGUMENT"
 
 
+class WrongTypeError(CommandError):
+    code = "WRONG_TYPE"
+    resp_prefix = "WRONGTYPE"
+
+    def __init__(self, message: str = "", *, prefix: str | None = None) -> None:
+        super().__init__(
+            message or "Operation against a key holding the wrong kind of value", prefix=prefix
+        )
+
+
+class OutOfMemoryError(CommandError):
+    code = "OUT_OF_MEMORY"
+    resp_prefix = "OOM"
+
+    def __init__(self, message: str = "", *, prefix: str | None = None) -> None:
+        super().__init__(
+            message or "command not allowed when used memory > 'maxmemory'.", prefix=prefix
+        )
+
+
 class KeyNotFoundError(KVStoreError):
     code = "KEY_NOT_FOUND"
 
 
 # ---------------------------------------------------------------- protocol
 class ProtocolError(KVStoreError):
-    """A request could not be decoded."""
+    """A request or reply could not be decoded."""
 
     code = "PROTOCOL_ERROR"
+
+    def __init__(self, message: str = "", *, prefix: str | None = None) -> None:
+        if not message.startswith("Protocol error"):
+            message = f"Protocol error: {message}"
+        super().__init__(message, prefix=prefix)
 
 
 # ------------------------------------------------------------- persistence
@@ -70,8 +104,19 @@ class PersistenceError(KVStoreError):
     code = "PERSISTENCE_ERROR"
 
 
+class PersistenceWriteError(PersistenceError):
+    """Writing the AOF failed; writes are refused until it succeeds again."""
+
+    code = "PERSISTENCE_WRITE_ERROR"
+    resp_prefix = "MISCONF"
+
+
 class AOFCorruptedError(PersistenceError):
     code = "AOF_CORRUPTED"
+
+
+class SnapshotCorruptedError(PersistenceError):
+    code = "SNAPSHOT_CORRUPTED"
 
 
 # ----------------------------------------------------------------- cluster
@@ -83,9 +128,11 @@ class NodeUnavailableError(ClusterError):
     """A node could not be reached or did not answer in time."""
 
     code = "NODE_UNAVAILABLE"
+    resp_prefix = "CLUSTERDOWN"
 
 
 class CrossShardError(ClusterError):
     """A multi-key command touched keys owned by different shards."""
 
     code = "CROSS_SHARD"
+    resp_prefix = "CROSSSLOT"
