@@ -28,6 +28,9 @@ dev = [
     "pre-commit>=3.8",
     "redis>=5.0",  # compatibility tests run the official client against kvstore
 ]
+bench = [
+    "matplotlib>=3.8",  # charts for docs/BENCHMARKS.md (python -m benchmarks.report)
+]
 
 [project.scripts]
 kvstore = "kvstore.__main__:main"
@@ -67,7 +70,7 @@ exclude_also = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src", "tests"]
+src = ["src", "tests", "."]
 
 [tool.ruff.lint]
 select = [
@@ -92,5 +95,5 @@ ignore = ["B008"]  # FastAPI's Depends() in argument defaults is idiomatic
 python_version = "3.11"
 strict = true
 mypy_path = "src"
-packages = ["kvstore"]
+packages = ["kvstore", "benchmarks"]
 plugins = ["pydantic.mypy"]
