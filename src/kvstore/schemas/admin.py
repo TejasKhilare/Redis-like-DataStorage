@@ -61,16 +61,50 @@ class ClusterNode(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     address: str
+    shard: str
+    role: str
     healthy: bool
     latency_ms: float | None
     error: str | None
+    # From the cluster manager's heartbeats.
+    state: str | None = None  # healthy | suspect | dead
+    reported_role: str | None = None  # what the node says it is: master | slave
+    offset: int | None = None
+    epoch: int | None = None
 
 
 class ClusterNodesResponse(BaseModel):
+    epoch: int
     virtual_nodes: int
     nodes: list[ClusterNode]
 
 
+class FailoverEventSchema(BaseModel):
+    shard: str
+    old_primary: str
+    new_primary: str
+    epoch: int
+    reason: str
+    detected_after_s: float
+    promoted_at: float
+    candidate_offsets: dict[str, int]
+
+
+class AddShardRequest(BaseModel):
+    id: str
+    primary: str
+    replicas: list[str] = []
+
+
+class RebalanceResponse(BaseModel):
+    epoch: int
+    ring: list[str]
+    moved_keys: int
+    moved_by_shard: dict[str, int]
+    duration_s: float
+
+
 class KeyOwnerResponse(BaseModel):
     key: str
-    node: str
+    shard: str
+    primary: str

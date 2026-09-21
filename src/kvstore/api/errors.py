@@ -14,9 +14,12 @@ from kvstore.core.exceptions import (
     KeyNotFoundError,
     KVStoreError,
     NodeUnavailableError,
+    NotEnoughReplicasError,
     OutOfMemoryError,
     PersistenceWriteError,
     ProtocolError,
+    ReadOnlyReplicaError,
+    TryAgainError,
 )
 from kvstore.schemas.common import ErrorBody, ErrorResponse
 
@@ -28,6 +31,10 @@ _STATUS_BY_ERROR: dict[type[KVStoreError], int] = {
     ProtocolError: status.HTTP_400_BAD_REQUEST,
     CrossShardError: status.HTTP_400_BAD_REQUEST,
     NodeUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    # Transient during a failover or a key move: the client may retry.
+    ReadOnlyReplicaError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    TryAgainError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    NotEnoughReplicasError: status.HTTP_503_SERVICE_UNAVAILABLE,
     ClusterError: status.HTTP_502_BAD_GATEWAY,
 }
 

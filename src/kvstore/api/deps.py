@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from kvstore.cluster.manager import ClusterManager
 from kvstore.cluster.router import ShardRouter
 from kvstore.core.config import Settings
 from kvstore.engine import Engine
@@ -32,7 +33,13 @@ def get_router(request: Request) -> ShardRouter:
     return router
 
 
+def get_manager(request: Request) -> ClusterManager:
+    manager: ClusterManager = request.app.state.manager
+    return manager
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 KVServiceDep = Annotated[KVService, Depends(get_kv_service)]
 EngineDep = Annotated[Engine, Depends(get_engine)]
 RouterDep = Annotated[ShardRouter, Depends(get_router)]
+ManagerDep = Annotated[ClusterManager, Depends(get_manager)]

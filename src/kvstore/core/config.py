@@ -9,6 +9,8 @@ from typing import Annotated, Literal
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from kvstore.cluster.topology import ClusterConfig
+
 NodeRole = Literal["shard", "router"]
 EvictionPolicyName = Literal["lru", "lfu", "random", "noeviction"]
 FsyncPolicyName = Literal["always", "everysec", "no"]
@@ -49,13 +51,32 @@ class Settings(BaseSettings):
     aof_rewrite_percentage: int = Field(default=100, ge=0, description="0 disables auto-rewrite.")
     aof_rewrite_min_bytes: int = Field(default=64 * 1024 * 1024, ge=0)
 
+    # ---- replication (shard only)
+    replicaof: str | None = Field(
+        default=None, description="'host:port' of the primary to replicate at startup."
+    )
+    repl_backlog_bytes: int = Field(default=1024 * 1024, gt=0)
+    repl_timeout_s: float = Field(default=5.0, gt=0)
+    repl_ping_interval_s: float = Field(default=1.0, gt=0)
+    min_replicas_to_write: int = Field(default=0, ge=0)
+    min_replicas_max_lag_s: float = Field(default=10.0, gt=0)
+
     # ---- cluster (router only)
     shards: Annotated[list[str], NoDecode] = Field(
         default=["127.0.0.1:6379", "127.0.0.1:6380", "127.0.0.1:6381"],
-        description="Comma-separated 'host:port' TCP addresses of the shards.",
+        description=(
+            "Comma-separated shard groups: 'host:port' (primary only) or 'id=primary+replica+...'."
+        ),
     )
     virtual_nodes: int = Field(default=100, gt=0)
     shard_timeout_s: float = Field(default=2.0, gt=0)
+    shard_pool_size: int = Field(default=2, gt=0, description="Connections per node.")
+    shard_retries: int = Field(default=3, ge=0, description="Retries of safe-to-repeat requests.")
+    shard_retry_backoff_s: float = Field(default=0.05, gt=0)
+    failover_enabled: bool = Field(default=True, description="Run the cluster manager.")
+    heartbeat_interval_s: float = Field(default=0.5, gt=0)
+    suspect_after_s: float = Field(default=1.0, gt=0)
+    dead_after_s: float = Field(default=2.0, gt=0)
 
     # ---- observability
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -77,12 +98,8 @@ class Settings(BaseSettings):
     @field_validator("shards")
     @classmethod
     def _validate_shards(cls, value: list[str]) -> list[str]:
-        for address in value:
-            host, sep, port = address.rpartition(":")
-            if not sep or not host or not port.isdigit():
-                raise ValueError(f"shard address must be 'host:port', got {address!r}")
-        if len(set(value)) != len(value):
-            raise ValueError("shard addresses must be unique")
+        if value:
+            ClusterConfig.from_spec(value)  # raises ValueError with the reason
         return value
 
     @model_validator(mode="after")

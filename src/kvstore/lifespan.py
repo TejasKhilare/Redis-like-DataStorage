@@ -15,11 +15,14 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 
+from kvstore.cluster.manager import ClusterManager
 from kvstore.cluster.router import ShardRouter
+from kvstore.cluster.topology import ClusterConfig
 from kvstore.core.config import Settings
 from kvstore.engine import Engine
 from kvstore.engine.cron import run_cron
-from kvstore.protocol.tcp_server import BatchContext, CommandHandler, TCPServer
+from kvstore.protocol.tcp_server import BatchHandler, CommandHandler, GroupCommit, TCPServer
+from kvstore.replication.node import ReplicationSettings, ShardNode
 from kvstore.schemas.common import ReadinessResponse
 from kvstore.services.kv_service import LocalKVService, RoutedKVService
 
@@ -27,7 +30,11 @@ logger = logging.getLogger(__name__)
 
 
 def _tcp_server(
-    settings: Settings, handler: CommandHandler, batch: BatchContext | None = None
+    settings: Settings,
+    handler: CommandHandler,
+    *,
+    group_commit: GroupCommit | None = None,
+    batch_handler: BatchHandler | None = None,
 ) -> TCPServer | None:
     if not settings.tcp_enabled:
         return None
@@ -36,7 +43,8 @@ def _tcp_server(
         host=settings.host,
         port=settings.tcp_port,
         max_request_bytes=settings.max_request_bytes,
-        batch=batch,
+        group_commit=group_commit,
+        batch_handler=batch_handler,
     )
 
 
@@ -57,10 +65,24 @@ async def shard_lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     engine = build_engine(settings)
     engine.open()  # loads snapshot + AOF; blocking is fine before we accept traffic
-    service = LocalKVService(engine)
-    # The engine's execute is synchronous, so a pipelined batch runs atomically
-    # and commits the AOF once (group commit) before any reply goes out.
-    tcp_server = _tcp_server(settings, engine.execute, engine.deferred_commit)
+    # The engine's execute is synchronous, so a pipelined batch runs atomically.
+    # Every connection served in one loop iteration then shares one AOF commit
+    # (and fsync) before any of them gets a reply.
+    group_commit = GroupCommit(engine.hold_commit, engine.release_commit)
+    node = ShardNode(
+        engine,
+        listening_port=settings.tcp_port,
+        data_dir=settings.data_dir if settings.aof_enabled else None,
+        settings=ReplicationSettings(
+            backlog_bytes=settings.repl_backlog_bytes,
+            timeout_s=settings.repl_timeout_s,
+            ping_interval_s=settings.repl_ping_interval_s,
+            min_replicas_to_write=settings.min_replicas_to_write,
+            min_replicas_max_lag_s=settings.min_replicas_max_lag_s,
+        ),
+    )
+    service = LocalKVService(node, group_commit)
+    tcp_server = _tcp_server(settings, node.execute, group_commit=group_commit)
     cron_task = asyncio.create_task(
         run_cron(
             engine,
@@ -83,7 +105,11 @@ async def shard_lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         if tcp_server is not None:
             await tcp_server.start()
+            node.listening_port = tcp_server.port  # the real one when started on port 0
+        node.start(replicaof=settings.replicaof)
         app.state.engine = engine
+        app.state.node = node
+        app.state.group_commit = group_commit
         app.state.kv_service = service
         app.state.tcp_server = tcp_server
         app.state.readiness_probe = readiness_probe
@@ -103,6 +129,7 @@ async def shard_lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         yield
     finally:
+        await node.stop()
         if tcp_server is not None:
             await tcp_server.stop()
         cron_task.cancel()
@@ -115,33 +142,56 @@ async def shard_lifespan(app: FastAPI) -> AsyncIterator[None]:
 @asynccontextmanager
 async def router_lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
-    shard_router = ShardRouter(
-        settings.shards,
-        virtual_nodes=settings.virtual_nodes,
-        timeout_s=settings.shard_timeout_s,
+    # A saved config (it records every failover and rebalance) wins over KV_SHARDS.
+    assert settings.data_dir is not None
+    config_path = settings.data_dir / "cluster.json"
+    config = ClusterConfig.load(config_path) or ClusterConfig.from_spec(
+        settings.shards, virtual_nodes=settings.virtual_nodes
     )
-    tcp_server = _tcp_server(settings, shard_router.execute)
+    shard_router = ShardRouter(
+        config,
+        timeout_s=settings.shard_timeout_s,
+        pool_size=settings.shard_pool_size,
+        retries=settings.shard_retries,
+        retry_backoff_s=settings.shard_retry_backoff_s,
+    )
+    tcp_server = _tcp_server(
+        settings, shard_router.execute, batch_handler=shard_router.execute_batch
+    )
+    manager = ClusterManager(
+        config,
+        on_change=shard_router.apply_config,
+        config_path=config_path,
+        heartbeat_interval_s=settings.heartbeat_interval_s,
+        suspect_after_s=settings.suspect_after_s,
+        dead_after_s=settings.dead_after_s,
+        failover_enabled=settings.failover_enabled,
+    )
 
     async def readiness_probe() -> ReadinessResponse:
         statuses = await shard_router.node_status()
         checks = {s.address: "ok" if s.healthy else "down" for s in statuses}
-        healthy = sum(s.healthy for s in statuses)
-        if healthy == len(statuses):
+        primaries = [s for s in statuses if s.role == "primary"]
+        up = sum(s.healthy for s in primaries)
+        if up == len(primaries):  # a replica being down costs no availability
             return ReadinessResponse(status="ready", checks=checks)
-        # Some shards down: keys on healthy shards still work, so stay in rotation.
-        return ReadinessResponse(status="degraded" if healthy else "unavailable", checks=checks)
+        # Some groups down: keys on healthy groups still work, so stay in rotation.
+        return ReadinessResponse(status="degraded" if up else "unavailable", checks=checks)
 
     try:
         if tcp_server is not None:
             await tcp_server.start()
+        manager.start()
         app.state.router = shard_router
+        app.state.manager = manager
         app.state.kv_service = RoutedKVService(shard_router)
         app.state.tcp_server = tcp_server
         app.state.readiness_probe = readiness_probe
         app.state.started_at = time.monotonic()
-        logger.info("router started", extra={"shards": settings.shards})
+        logger.info("router started", extra={"config": config.to_dict()})
         yield
     finally:
+        await manager.stop()
         if tcp_server is not None:
             await tcp_server.stop()
         await shard_router.close()

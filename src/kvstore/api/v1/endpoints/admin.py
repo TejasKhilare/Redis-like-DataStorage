@@ -30,7 +30,7 @@ async def node_info(request: Request, settings: SettingsDep) -> NodeInfoResponse
     if settings.node_role == "shard":
         info.engine = EngineInfoSchema.model_validate(state.engine.info())
     else:
-        info.shards = state.router.ring.nodes
+        info.shards = [group.id for group in state.router.config.shards]
     return info
 
 

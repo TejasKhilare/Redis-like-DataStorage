@@ -5,8 +5,11 @@ from __future__ import annotations
 from fnmatch import fnmatchcase
 from typing import Any
 
+from kvstore.core.codec import to_bytes, to_str
+from kvstore.core.exceptions import CommandError
 from kvstore.engine.commands.registry import (
     ALL_KEYS,
+    DENYOOM,
     WRITE,
     CommandContext,
     command,
@@ -16,6 +19,7 @@ from kvstore.engine.commands.registry import (
     upper,
 )
 from kvstore.engine.datatypes import type_name
+from kvstore.engine.persistence.snapshot import dump_value, load_value
 from kvstore.protocol.resp import OK, SimpleString
 
 
@@ -134,3 +138,46 @@ def pttl(ctx: CommandContext, args: list[Any]) -> int:
 def ttl(ctx: CommandContext, args: list[Any]) -> int:
     ms = pttl(ctx, args)
     return ms if ms < 0 else (ms + 500) // 1000
+
+
+# ------------------------------------------------------- DUMP / RESTORE
+@command("DUMP", min_args=1, max_args=1)
+def dump(ctx: CommandContext, args: list[Any]) -> str | None:
+    """The value, serialized (with a checksum) for RESTORE on this or another node."""
+    record = ctx.store.record(key_arg(args[0]))
+    if record is None:
+        return None
+    _, kind, payload, _ = record
+    return to_str(dump_value(kind, payload))
+
+
+@command("RESTORE", min_args=3, max_args=5, flags=[WRITE, DENYOOM])
+def restore(ctx: CommandContext, args: list[Any]) -> SimpleString:
+    """``RESTORE key ttl-ms payload [REPLACE] [ABSTTL]``; a ttl of 0 means no expiry."""
+    key, ttl, raw = key_arg(args[0]), int_arg(args[1]), args[2]
+    options = {upper(arg) for arg in args[3:]}
+    if not options <= {"REPLACE", "ABSTTL"} or ttl < 0:
+        raise syntax_error()
+    if "REPLACE" not in options and ctx.store.peek(key) is not None:
+        raise CommandError("Target key name already exists.", prefix="BUSYKEY")
+    try:
+        kind, payload = load_value(to_bytes(str(raw)))
+    except ValueError as exc:
+        raise CommandError(str(exc)) from None
+    expires_ms = _deadline_ms(ttl, absolute="ABSTTL" in options, now_ms=_to_ms(ctx.now()))
+    if expires_ms is not None and expires_ms <= _to_ms(ctx.now()) and not ctx.loading:
+        ctx.store.delete(key)  # already expired: like Redis, nothing to create
+        ctx.propagate("DEL", key)
+        return OK
+    ctx.store.delete(key)
+    ctx.store.load_record((key, kind, payload, None if expires_ms is None else expires_ms / 1000))
+    # Logged with an absolute deadline, so replaying it later gives the same result.
+    ctx.propagate("RESTORE", key, expires_ms or 0, raw, "REPLACE", "ABSTTL")
+    return OK
+
+
+def _deadline_ms(ttl: int, *, absolute: bool, now_ms: int) -> int | None:
+    """RESTORE's ttl as an absolute unix time in ms (``None``: no expiry)."""
+    if ttl == 0:
+        return None
+    return ttl if absolute else now_ms + ttl
