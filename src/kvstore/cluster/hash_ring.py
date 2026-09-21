@@ -7,6 +7,20 @@ import hashlib
 from collections.abc import Iterable
 
 
+def hash_slot_key(key: str) -> str:
+    """The part of a key that is hashed. ``{user:1}:cart`` hashes as ``user:1``.
+
+    Redis Cluster's hash tags: keys sharing a tag always land in the same
+    shard group, so multi-key commands on them are allowed.
+    """
+    start = key.find("{")
+    if start >= 0:
+        end = key.find("}", start + 1)
+        if end > start + 1:
+            return key[start + 1 : end]
+    return key
+
+
 class ConsistentHashRing:
     """Maps keys to nodes so that adding/removing a node moves only ~1/N of keys.
 
