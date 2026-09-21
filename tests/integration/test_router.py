@@ -8,7 +8,8 @@ from typing import Any
 import httpx
 import pytest
 
-from kvstore.cluster.router import ShardRouter, hash_slot_key
+from kvstore.cluster.hash_ring import hash_slot_key
+from kvstore.cluster.router import ShardRouter
 from kvstore.core.exceptions import (
     CommandError,
     CrossShardError,
@@ -74,9 +75,9 @@ async def test_http_writes_land_on_the_owning_shard(
         assert (await http.put(f"/v1/keys/user:{i}", json={"value": str(i)})).status_code == 200
     for i in range(30):
         key = f"user:{i}"
-        owner = (await http.get(f"/v1/cluster/keys/{key}/owner")).json()["node"]
-        assert owner == app.state.router.owner(key)
-        assert shards[owner].engine.execute("GET", key) == str(i)
+        owner = (await http.get(f"/v1/cluster/keys/{key}/owner")).json()
+        assert owner["shard"] == app.state.router.owner(key)
+        assert shards[owner["primary"]].engine.execute("GET", key) == str(i)
         assert (await http.get(f"/v1/keys/{key}")).json()["value"] == str(i)
     assert all(shard.engine.execute("DBSIZE") > 0 for shard in shards.values())
 
@@ -149,7 +150,7 @@ async def test_cluster_nodes_and_readiness(
     assert ready.status_code == 200 and ready.json()["status"] == "ready"
     info = (await http.get("/v1/admin/info")).json()
     assert info["role"] == "router"
-    assert info["shards"] == sorted(shards)
+    assert info["shards"] == ["shard-1", "shard-2", "shard-3"]  # stable group ids
     assert info["engine"] is None
 
 
@@ -175,8 +176,9 @@ async def test_shard_failure_is_isolated(
     await down.server.stop()
 
     candidates = [f"k{i}" for i in range(1000)]
-    key_on_down = next(k for k in candidates if app.state.router.owner(k) == down_address)
-    key_on_up = next(k for k in candidates if app.state.router.owner(k) != down_address)
+    router: ShardRouter = app.state.router
+    key_on_down = next(k for k in candidates if router.primary(router.owner(k)) == down_address)
+    key_on_up = next(k for k in candidates if router.primary(router.owner(k)) != down_address)
 
     response = await http.put(f"/v1/keys/{key_on_down}", json={"value": "1"})
     assert response.status_code == 503

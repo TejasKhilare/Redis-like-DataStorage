@@ -131,8 +131,53 @@ class NodeUnavailableError(ClusterError):
     resp_prefix = "CLUSTERDOWN"
 
 
+class ConnectFailedError(NodeUnavailableError):
+    """The node could not be connected to, so the request was never sent (safe to retry)."""
+
+    code = "NODE_UNAVAILABLE"
+
+
 class CrossShardError(ClusterError):
     """A multi-key command touched keys owned by different shards."""
 
     code = "CROSS_SHARD"
     resp_prefix = "CROSSSLOT"
+
+
+class ReadOnlyReplicaError(ClusterError):
+    """A write reached a replica (or a demoted primary): retry on the current primary."""
+
+    code = "READ_ONLY_REPLICA"
+    resp_prefix = "READONLY"
+
+    def __init__(self, message: str = "", *, prefix: str | None = None) -> None:
+        super().__init__(message or "You can't write against a read only replica.", prefix=prefix)
+
+
+class TryAgainError(ClusterError):
+    """The key is being moved right now; retry shortly."""
+
+    code = "TRY_AGAIN"
+    resp_prefix = "TRYAGAIN"
+
+
+class AskRedirectError(ClusterError):
+    """The key has moved to another node during a rebalance (``-ASK <shard> <address>``)."""
+
+    code = "ASK_REDIRECT"
+    resp_prefix = "ASK"
+
+    @property
+    def target(self) -> str:
+        """The address to retry at."""
+        return self.message.split()[-1]
+
+
+class NotEnoughReplicasError(ClusterError):
+    """``min-replicas-to-write`` is not met, so the primary refuses writes."""
+
+    code = "NOT_ENOUGH_REPLICAS"
+    resp_prefix = "NOREPLICAS"
+
+    def __init__(self, message: str = "", *, prefix: str | None = None) -> None:
+        super().__init__(message or "Not enough good replicas to write.", prefix=prefix)
