@@ -17,16 +17,16 @@ def clock() -> FakeClock:
 
 @pytest.fixture
 def engine(clock: FakeClock) -> Engine:
-    """In-memory engine (no AOF)."""
-    return Engine(max_keys=100, clock=clock, rng=random.Random(0))
+    """In-memory engine (no persistence)."""
+    return Engine(clock=clock, rng=random.Random(0))
 
 
 @pytest.fixture
-def aof_path(tmp_path: Path) -> Path:
-    return tmp_path / "appendonly.aof"
+def data_dir(tmp_path: Path) -> Path:
+    return tmp_path / "data"
 
 
 @pytest.fixture
-def durable_engine(clock: FakeClock, aof_path: Path) -> Iterator[Engine]:
-    with Engine(max_keys=100, clock=clock, aof_path=aof_path) as engine:
+def durable_engine(clock: FakeClock, data_dir: Path) -> Iterator[Engine]:
+    with Engine(clock=clock, data_dir=data_dir, aof_fsync="no", rng=random.Random(0)) as engine:
         yield engine
