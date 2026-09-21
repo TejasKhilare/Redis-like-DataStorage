@@ -22,14 +22,17 @@ Every phase ends with passing CI, tests for new code, and an updated README and 
 - [x] 147 tests (unit and integration, fake clock), 96% coverage
 - [x] Dockerfile (multi-stage, non-root, healthcheck), docker-compose cluster, GitHub Actions CI
 
-## Phase 2: Engine depth
+## Phase 2: Engine depth ✅ (v0.3.0)
 
-- [ ] RESP2 protocol on the data plane, so `redis-cli` and `redis-benchmark` work
-- [ ] AOF fsync policies: `always` / `everysec` / `no`
-- [ ] Background AOF rewrite (compaction), RDB-style snapshots, snapshot plus AOF-tail recovery
-- [ ] CRC per AOF record
-- [ ] Data types: list, hash, set, sorted set (skip list)
-- [ ] Eviction: LFU, random, `maxmemory` in bytes
+- [x] RESP2 on the data plane (incremental parser, inline commands, pipelining); redis-py passes its compatibility tests
+- [x] AOF fsync policies: `always` / `everysec` / `no`, with group commit per pipelined batch
+- [x] Background AOF rewrite without fork(): a binary CRC-checked snapshot plus a manifest that makes crashes at any point safe
+- [x] CRC32 per AOF record; v1 AOFs still load
+- [x] Data types: list, hash, set, sorted set (a skip list with rank spans); about 80 commands
+- [x] Eviction: LFU (Redis-style decaying counters), random, noeviction (OOM), `maxmemory` in bytes
+- [x] Router: hash tags, fan-out for DBSIZE, KEYS and FLUSHALL, stateless commands answered locally
+- [x] MISCONF: refuse writes after an AOF write failure
+- [x] 237 tests, 97% coverage, mypy --strict
 
 ## Phase 3: Benchmarks (round 1)
 
@@ -39,6 +42,9 @@ Every phase ends with passing CI, tests for new code, and an updated README and 
 
 ## Phase 4: Distributed systems
 
+- [ ] Router: forward a client's pipeline to each shard as one pipeline. Today every command
+      is its own round trip: 3,000 pipelined SETs through the router took ~7 s with
+      fsync=always, against ~0.1 s straight to a shard (measured on Windows during Phase 2).
 - [ ] Router connection pooling, retries, timeouts
 - [ ] Primary-replica async replication with offsets
 - [ ] Heartbeats, failure detection, failover with epochs (no split-brain)

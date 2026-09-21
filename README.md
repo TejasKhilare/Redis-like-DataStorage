@@ -1,198 +1,202 @@
-# kvstore: a Redis-inspired distributed key-value store
+# kvstore: a Redis-compatible distributed key-value store
 
-A distributed, in-memory key-value datastore built from scratch in Python. It has
-TTL expiry, LRU eviction, append-only-file persistence with crash recovery, and
-horizontal sharding with consistent hashing. Each node serves a
-**TCP data plane** for fast key-value traffic and a
-**FastAPI control plane** for REST access, health checks and introspection.
+A distributed, in-memory datastore built from scratch in Python. It speaks
+**RESP2, the Redis wire protocol**, so unmodified Redis clients can connect,
+including `redis-cli` and `redis-py`. It supports strings, lists, hashes, sets
+and sorted sets, and shards data across nodes with consistent hashing.
 
-[![CI](https://github.com/TejasKhilare/Redis-like-DataStorage/actions/workflows/ci.yml/badge.svg)](https://github.com/TejasKhilare/Redis-like-DataStorage/actions/workflows/ci.yml)
+Its persistence is modeled on Redis 7: an append-only file with a CRC on every
+record, three fsync policies, background rewrite into binary snapshots, and a
+manifest file that keeps recovery correct no matter when a crash happens. Each
+node also serves a **FastAPI control plane** for REST access, health checks
+and introspection.
+
 ![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
-![coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)
+![tests](https://img.shields.io/badge/tests-237%20passing-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-97%25-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-blue)
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    C1[TCP client / CLI] -->|JSON lines :7000| R
+    C1[redis-cli / redis-py / any RESP client] -->|RESP :7000| R
     C2[HTTP client] -->|REST :8000| R
     subgraph R[Router - stateless]
-      HR[consistent hash ring<br/>100 virtual nodes / shard]
+      HR[consistent hash ring + hash tags<br/>fan-out: DBSIZE, KEYS, FLUSHALL]
     end
     R -->|owner of key| S1
     R --> S2
     R --> S3
-    subgraph S1[Shard 1]
-      E1[Engine: store + LRU + TTL] --> A1[(appendonly.aof)]
+    subgraph S1[Shard]
+      E1[Engine: store + eviction + expiry] --> P1[(manifest<br/>snapshot + AOF)]
     end
-    subgraph S2[Shard 2]
-      E2[Engine] --> A2[(appendonly.aof)]
+    subgraph S2[Shard]
+      E2[Engine] --> P2[(...)]
     end
-    subgraph S3[Shard 3]
-      E3[Engine] --> A3[(appendonly.aof)]
+    subgraph S3[Shard]
+      E3[Engine] --> P3[(...)]
     end
 ```
 
-Each node runs as a single process with a single event loop. That process hosts
-two servers:
-
-| Plane | Transport | Used for |
-|---|---|---|
-| Data plane | asyncio TCP, newline-delimited JSON | clients, the CLI, router → shard traffic |
-| Control plane | FastAPI (HTTP) | REST key API, `/health`, `/ready`, admin, cluster view, OpenAPI docs |
-
-Both servers share one engine, and commands run one at a time. That makes every
-command atomic, as in Redis. See [the ADRs](docs/adr/) for why.
-
 ## Features
 
-**Engine**
-- Values can be any JSON: strings, numbers, objects or arrays. `GET`/`SET` are O(1).
-- Commands: `PING SET [EX] GET DEL EXISTS EXPIRE EXPIREAT PEXPIREAT PERSIST TTL PTTL DBSIZE`.
-  They are defined in a command table that records each command's arity and key positions.
-- Keys expire in two ways. *Lazy*: an expired key is removed when it is read.
-  *Active*: 10 times a second, a background task samples up to 20 keys that
-  have a TTL, removes the expired ones, and samples again while more than 25%
-  of a sample was expired (the same heuristic as Redis). Sampling picks from an
-  array that holds only keys with a TTL, so each cycle costs O(sample) rather
-  than O(keyspace).
-- LRU eviction when the key count reaches `max_keys`, with O(1) operations
-  (`OrderedDict`). Eviction policies are pluggable.
+**Protocol**
+- RESP2 with an incremental parser that handles multi-bulk and inline
+  commands, pipelining, and values of any bytes (binary-safe).
+- Redis-style error prefixes: `WRONGTYPE`, `OOM`, `CROSSSLOT`, `CLUSTERDOWN`, `MISCONF`.
+- The handshake commands clients send on connect work: `HELLO 2`, `CLIENT SETINFO`,
+  `COMMAND`/`COMMAND DOCS`, `CONFIG GET`, `INFO`.
 
-**Persistence**
-- Append-only file, one per node. A write is recorded after it has been applied
-  in memory and before the client gets its reply, so every acknowledged write
-  is in the log.
-- The log records a command's effect rather than the request. `EXPIRE k 10`
-  becomes an absolute `PEXPIREAT`, and each eviction becomes a `DEL`, so
-  replaying the log rebuilds exactly the same keyspace.
-- On recovery, a torn final record left by a crash is cut off. Corruption
-  anywhere else stops startup instead of silently loading partial data.
+**Data types**: about 80 commands:
+
+| Type | Commands |
+|---|---|
+| string | `GET SET [NX\|XX] [GET] [EX\|PX\|KEEPTTL]`, `SETNX GETDEL MGET MSET INCR[BY] DECR[BY] INCRBYFLOAT APPEND STRLEN` |
+| list | `LPUSH RPUSH LPOP RPOP [count]`, `LLEN LRANGE LINDEX LSET LTRIM LREM` |
+| hash | `HSET HSETNX HGET HMGET HDEL HGETALL HKEYS HVALS HLEN HEXISTS HINCRBY` |
+| set | `SADD SREM SMEMBERS SISMEMBER SCARD SPOP SRANDMEMBER SINTER SUNION SDIFF` |
+| sorted set | `ZADD [NX\|XX] [GT\|LT] [CH] [INCR]`, `ZINCRBY ZREM ZSCORE ZCARD ZCOUNT ZRANK ZREVRANK ZRANGE [BYSCORE] [REV] [LIMIT] [WITHSCORES] ZREVRANGE ZRANGEBYSCORE ZREVRANGEBYSCORE ZPOPMIN ZPOPMAX` |
+| keys | `DEL UNLINK EXISTS TYPE KEYS EXPIRE PEXPIRE EXPIREAT PEXPIREAT PERSIST TTL PTTL DBSIZE FLUSHALL` |
+| server | `PING ECHO TIME SELECT HELLO CLIENT COMMAND CONFIG INFO SAVE BGSAVE BGREWRITEAOF LASTSAVE` |
+
+- Sorted sets use a **skip list with rank spans**, a port of Redis's
+  `zskiplist`, alongside a dict. Insert, delete, rank and range lookups take
+  O(log n).
+- Commands are defined in a **table** that records each command's arity,
+  flags and key positions, the same metadata Redis exposes through `COMMAND INFO`.
+
+**Memory and eviction**
+- Two limits: `maxmemory` (bytes, tracked by an O(1) per-command estimate) and `max_keys`.
+- Four eviction policies:
+  - **LRU**: exact, O(1).
+  - **LFU**: Redis-style. An 8-bit counter per key grows logarithmically,
+    decays while the key sits idle, and victims are chosen by sampling.
+  - **random**.
+  - **noeviction**: once the limit is reached, commands that add data fail
+    with `OOM`, while `DEL` still works.
+- A command never evicts the keys it just wrote.
+
+**Persistence** (see ADR-0005 and ADR-0006)
+- The AOF records the *effect* of each command, not the request:
+  - `EXPIRE` is logged as an absolute `PEXPIREAT`;
+  - a random `SPOP` is logged as the `SREM` of the members it took;
+  - evictions are logged as `DEL`.
+- Every record carries a **CRC32**. On restart, a torn final record from a
+  crash is cut off; corruption anywhere else stops startup.
+- Three fsync policies:
+  - `always`: nothing acknowledged is ever lost;
+  - `everysec`: a background thread fsyncs once a second;
+  - `no`: the OS decides when to flush.
+- **Group commit**: a batch of pipelined commands shares one fsync, and no
+  reply is sent until its write is on disk.
+- **Background rewrite without `fork()`**:
+  1. copy the keyspace at a single point in time (O(n) in memory);
+  2. write it to a binary, CRC-checked snapshot on a separate thread;
+  3. switch to a new AOF file and record the new set of files in a manifest
+     that is replaced atomically.
+
+  The rewrite also starts automatically when the AOF has doubled in size.
+- If an AOF write fails, the node refuses further writes with `MISCONF`
+  instead of silently losing data. Reads keep working.
 
 **Cluster**
-- A stateless router places keys with consistent hashing (MD5, 100 virtual
-  nodes per shard). Adding or removing a shard moves about 1/N of the keys.
-- Commands whose keys belong to different shards are rejected with
-  `CROSS_SHARD`, like Redis Cluster's `CROSSSLOT`.
-- If a shard fails, only its keys are affected: they return `503`, while the
-  other shards keep serving. The router's `/ready` reports `degraded`.
-
-**Engineering**
-- Typed config (pydantic-settings), structured JSON logs, request IDs, and one
-  error format across TCP and HTTP.
-- 147 tests with 96% coverage; mypy `--strict`; ruff; CI on Linux and Windows;
-  Docker image and compose file.
+- A stateless router uses consistent hashing (100 virtual nodes per shard).
+  **Hash tags** (`{user:1}:cart`) place related keys on the same shard.
+- A multi-key command whose keys live on different shards fails with `CROSSSLOT`.
+- The router answers some commands itself (`PING`, `ECHO`, `COMMAND`) and
+  sends others to every shard and combines the replies (`DBSIZE`, `KEYS`, `FLUSHALL`).
+- If a shard fails, only its keys are affected (`CLUSTERDOWN` / HTTP 503).
+  The router's readiness reports `degraded`.
 
 ## Quickstart
 
 ```bash
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-
 python scripts/run_cluster.py                      # 3 shards + router, Ctrl+C to stop
 ```
 
-| Node | TCP | HTTP |
+| Node | RESP (TCP) | HTTP |
 |---|---|---|
 | router | 7000 | http://127.0.0.1:8000/docs |
 | shard-1 / 2 / 3 | 6379 / 6380 / 6381 | :8001 / :8002 / :8003 |
 
-**Or with Docker:** `docker compose up --build` (the router is on ports 7000 and 8000).
-
-**Or a single node:** `python -m kvstore` (HTTP on :8000, TCP on :6379). Every
-setting is read from a `KV_*` environment variable; see [.env.example](.env.example).
-
-### CLI (TCP)
-
 ```text
-$ python -m kvstore.cli --port 7000
-127.0.0.1:7000> SET user:1 '{"name": "tejas", "age": 22}'
+$ redis-cli -p 7000                    # or: python -m kvstore.cli --port 7000
+127.0.0.1:7000> ZADD leaderboard 120 tejas 95 amol
+(integer) 2
+127.0.0.1:7000> ZRANGE leaderboard 0 -1 WITHSCORES REV
+1) "tejas"
+2) "120"
+3) "amol"
+4) "95"
+127.0.0.1:7000> MSET {cart:9}:items 3 {cart:9}:total 42
 OK
-127.0.0.1:7000> GET user:1
-{
-  "name": "tejas",
-  "age": 22
-}
-127.0.0.1:7000> SET session abc EX 100
-OK
-127.0.0.1:7000> TTL session
-(integer) 100
-127.0.0.1:7000> DEL user:1 session
-(error) CROSS_SHARD: keys in the request belong to different shards
+127.0.0.1:7000> MSET a 1 b 2
+(error) CROSSSLOT Keys in request don't hash to the same shard
 ```
 
-### REST (HTTP)
+```python
+import redis  # the official client, unmodified
 
-```bash
-curl -X PUT localhost:8000/v1/keys/cart:9 -H 'content-type: application/json' \
-     -d '{"value": ["apple", "milk"], "ttl_seconds": 60}'
-curl localhost:8000/v1/keys/cart:9                 # {"key":"cart:9","value":["apple","milk"]}
-curl localhost:8000/v1/cluster/keys/cart:9/owner   # {"key":"cart:9","node":"127.0.0.1:6379"}
+r = redis.Redis(port=7000, protocol=2, decode_responses=True)
+r.hset("user:1", mapping={"name": "tejas", "city": "pune"})
+r.rpush("queue", "job-1", "job-2")
 ```
+
+### REST API
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/v1/keys/{key}` | Read a value (`404` if missing) |
-| `PUT` | `/v1/keys/{key}` | Create or overwrite a value, with an optional `ttl_seconds` |
-| `DELETE` | `/v1/keys/{key}` | Delete a key (`204`) |
-| `GET` / `PUT` / `DELETE` | `/v1/keys/{key}/ttl` | Read, set or remove a key's TTL |
-| `GET` | `/v1/admin/info` | Node and engine stats |
-| `GET` | `/v1/cluster/nodes` | Shard health and latency (router only) |
-| `GET` | `/v1/cluster/keys/{key}/owner` | Which shard owns a key (router only) |
+| `GET` `PUT` `DELETE` | `/v1/keys/{key}` | String values |
+| `GET` `PUT` `DELETE` | `/v1/keys/{key}/ttl` | Read / set / remove a TTL |
+| `GET` | `/v1/keys/{key}/type` | `string`, `list`, `hash`, `set` or `zset` |
+| `POST` | `/v1/commands` | Run any command: `{"command": "ZADD", "args": ["b", 10, "x"]}` |
+| `POST` | `/v1/admin/rewrite` | Background snapshot + AOF rewrite (every shard, via the router) |
+| `GET` | `/v1/admin/info` | Memory, eviction, persistence and fsync statistics |
+| `GET` | `/v1/cluster/nodes`, `/v1/cluster/keys/{key}/owner` | Topology (router only) |
 | `GET` | `/health`, `/ready` | Liveness and readiness probes |
 
-Errors always use this shape:
-`{"error": {"code": "KEY_NOT_FOUND", "message": "key 'x' not found"}}`.
-
-### TCP wire protocol
-
-```text
-→ {"command": "SET", "args": ["user:1", {"name": "tejas"}]}
-← {"ok": true, "result": "OK"}
-← {"ok": false, "error": {"code": "WRONG_ARITY", "message": "..."}}
-```
-
-Requests are answered in order, so a client can pipeline them: send many
-requests, then read the replies. RESP, the Redis protocol that `redis-cli` and
-`redis-benchmark` speak, arrives in Phase 2.
+Every setting is a `KV_*` environment variable; see [.env.example](.env.example).
 
 ## Project layout
 
 ```text
 src/kvstore/
-├── main.py / __main__.py   app factory, entry point (single worker by design)
-├── lifespan.py             per-role startup/shutdown (engine, TCP server, expiry task)
-├── core/                   config, structured logging, exception hierarchy
-├── api/                    FastAPI: deps, error handlers, middleware, v1 endpoints
-├── schemas/                Pydantic request/response models
-├── services/               KVService (local engine or routed)
-├── engine/                 store, entry, keyset, commands, eviction/, persistence/, expiry
-├── protocol/               JSON-lines codec, TCP server, async client
-├── cluster/                consistent hash ring, shard router
-└── cli.py                  interactive client
-tests/{unit,integration}/   147 tests, fake clock (no sleeps in TTL tests)
+├── engine/
+│   ├── engine.py           dispatch, OOM checks, eviction, group commit, cron
+│   ├── store.py            keyspace, expiry, limits, memory accounting, snapshots
+│   ├── commands/           the command table: strings, lists, hashes, sets, zsets, keyspace, server
+│   ├── datatypes/          skip list, sorted set, list/hash/set containers, sizing
+│   ├── eviction/           lru, lfu, random, noeviction
+│   └── persistence/        aof (CRC, fsync), snapshot (binary), manifest, manager (rewrites)
+├── protocol/               RESP codec, TCP server (group commit), async client
+├── cluster/                hash ring, router (hash tags, fan-out)
+├── api/ schemas/ services/ FastAPI control plane
+└── cli.py                  redis-cli style client
+tests/                      237 tests: unit, integration, redis-py compatibility, crash recovery
 docs/                       roadmap, architecture decision records
 ```
 
 ## Development
 
 ```bash
-make check        # ruff + mypy --strict + pytest with coverage
-make test         # without make: python -m pytest
-make format
+python -m pytest --cov     # 237 tests, ~25s
+ruff check . && mypy       # lint + strict typing
 ```
 
 ## Design notes
 
-Short records of each decision and its tradeoffs:
-- [ADR-0001](docs/adr/0001-control-plane-and-data-plane.md): HTTP control plane and TCP data plane in one process
+- [ADR-0001](docs/adr/0001-control-plane-and-data-plane.md): HTTP control plane and TCP data plane
 - [ADR-0002](docs/adr/0002-single-threaded-command-execution.md): single-threaded command execution
 - [ADR-0003](docs/adr/0003-aof-logs-effects-not-requests.md): the AOF logs effects, not requests
 - [ADR-0004](docs/adr/0004-stateless-router-with-consistent-hashing.md): a stateless router with consistent hashing
+- [ADR-0005](docs/adr/0005-resp-and-the-value-model.md): RESP and the value model
+- [ADR-0006](docs/adr/0006-forkless-rewrite-fsync-and-group-commit.md): rewrite without fork(), fsync policies, group commit
 
-The phased plan, covering RESP, benchmarks, replication and failover, is in
-[docs/ROADMAP.md](docs/ROADMAP.md).
+The roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md). Phase 3 benchmarks
+throughput and tail latency against real Redis.
 
 ## License
 
