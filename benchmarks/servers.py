@@ -1,0 +1,161 @@
+"""Start and stop the servers under test: kvstore shards, a kvstore cluster, Redis."""
+
+from __future__ import annotations
+
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Callable
+from contextlib import AbstractContextManager, ExitStack
+from dataclasses import dataclass
+from pathlib import Path
+from types import TracebackType
+from typing import Self
+
+_START_TIMEOUT_S = 30.0
+
+
+def free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port: int = sock.getsockname()[1]
+        return port
+
+
+@dataclass(frozen=True, slots=True)
+class Endpoint:
+    """Where the load generator connects: a RESP port and (kvstore only) an HTTP port."""
+
+    resp_port: int
+    http_port: int | None = None
+    host: str = "127.0.0.1"
+
+
+class _Process(AbstractContextManager["_Process"]):
+    def __init__(self, name: str, argv: list[str], env: dict[str, str], log_path: Path) -> None:
+        self.name = name
+        self._log = log_path.open("wb")
+        self._proc = subprocess.Popen(argv, env=env, stdout=self._log, stderr=subprocess.STDOUT)
+
+    def check_alive(self) -> None:
+        if self._proc.poll() is not None:
+            raise RuntimeError(
+                f"{self.name} exited with code {self._proc.returncode}; see {self._log.name}"
+            )
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        if self._proc.poll() is None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait()
+        self._log.close()
+
+
+def _wait_until(ready: Callable[[], bool], proc: _Process, what: str) -> None:
+    deadline = time.monotonic() + _START_TIMEOUT_S
+    while time.monotonic() < deadline:
+        proc.check_alive()
+        if ready():
+            return
+        time.sleep(0.1)
+    raise TimeoutError(f"{what} did not become ready in {_START_TIMEOUT_S:.0f} s")
+
+
+def _http_ready(port: int) -> bool:
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/ready", timeout=1) as response:
+            return bool(response.status == 200)
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+def _resp_ready(port: int) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=1) as sock:
+            sock.sendall(b"PING\r\n")
+            return sock.recv(64).startswith(b"+PONG")
+    except OSError:
+        return False
+
+
+class Deployment(AbstractContextManager["Deployment"]):
+    """A set of server processes plus a scratch directory, torn down together."""
+
+    def __init__(self, work_dir: Path | None = None) -> None:
+        self._stack = ExitStack()
+        self.dir = Path(tempfile.mkdtemp(prefix="kvbench-", dir=work_dir))
+        self._stack.callback(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self._stack.close()
+
+    # ------------------------------------------------------------- kvstore
+    def kvstore_node(self, name: str, *, fsync: str = "everysec", **env: str) -> Endpoint:
+        resp_port, http_port = free_port(), free_port()
+        node_env = {
+            **os.environ,
+            "KV_NODE_ID": name,
+            "KV_TCP_PORT": str(resp_port),
+            "KV_HTTP_PORT": str(http_port),
+            "KV_DATA_DIR": str(self.dir / name),
+            "KV_AOF_FSYNC": fsync,
+            "KV_LOG_LEVEL": "WARNING",
+            "KV_ACCESS_LOG": "false",
+            **env,
+        }
+        proc = self._stack.enter_context(
+            _Process(name, [sys.executable, "-m", "kvstore"], node_env, self.dir / f"{name}.log")
+        )
+        _wait_until(lambda: _http_ready(http_port), proc, name)
+        return Endpoint(resp_port, http_port)
+
+    def kvstore_cluster(self, shards: int = 3, *, fsync: str = "everysec") -> Endpoint:
+        addresses = []
+        for i in range(shards):
+            shard = self.kvstore_node(f"shard-{i + 1}", fsync=fsync)
+            addresses.append(f"127.0.0.1:{shard.resp_port}")
+        return self.kvstore_node("router", KV_NODE_ROLE="router", KV_SHARDS=",".join(addresses))
+
+    # --------------------------------------------------------------- Redis
+    def redis(self, redis_server: str, *, fsync: str = "everysec") -> Endpoint:
+        port = free_port()
+        data = self.dir / "redis"
+        data.mkdir()
+        argv = [
+            redis_server,
+            "--port", str(port),
+            "--bind", "127.0.0.1",
+            "--dir", str(data),
+            "--save", "",
+            "--appendonly", "yes",
+            "--appendfsync", fsync,
+            "--daemonize", "no",
+            "--loglevel", "warning",
+        ]  # fmt: skip
+        proc = self._stack.enter_context(
+            _Process("redis", argv, dict(os.environ), self.dir / "redis.log")
+        )
+        _wait_until(lambda: _resp_ready(port), proc, "redis-server")
+        return Endpoint(port)

@@ -26,3 +26,6 @@ data/
 .env
 .idea/
 .vscode/
+
+# Benchmark runs (the committed baseline has a descriptive name)
+benchmarks/results/latest.json

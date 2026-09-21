@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 PY ?= python
 
-.PHONY: help install run router cluster cli test cov lint format typecheck check docker-build up down clean
+.PHONY: help install run router cluster cli test cov lint format typecheck check bench bench-report docker-build up down clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -37,6 +37,12 @@ typecheck:  ## Static type check (mypy --strict)
 	mypy
 
 check: lint typecheck cov  ## Everything CI runs
+
+bench:  ## Run the benchmark suite (REDIS=path/to/redis/src for the Redis baseline)
+	$(PY) -m benchmarks.suite --out benchmarks/results/latest.json $(if $(REDIS),--redis-server $(REDIS)/redis-server --redis-benchmark $(REDIS)/redis-benchmark)
+
+bench-report:  ## Charts and tables from the latest benchmark run
+	$(PY) -m benchmarks.report benchmarks/results/latest.json
 
 docker-build:  ## Build the container image
 	docker build -t kvstore:dev .
