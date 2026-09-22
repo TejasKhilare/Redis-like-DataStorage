@@ -11,7 +11,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, ExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,12 +37,44 @@ class Endpoint:
     host: str = "127.0.0.1"
 
 
+def _file_size_limit(limit: int | None) -> Callable[[], None] | None:
+    """A ``preexec_fn`` capping the size of any file the process writes (POSIX only).
+
+    Past it, ``write()`` fails with EFBIG -- CPython ignores SIGXFSZ -- which
+    the node handles exactly like a full disk (ENOSPC).
+    """
+    if limit is None:
+        return None
+    if sys.platform == "win32":
+        raise RuntimeError("file size limits need a POSIX system (use Linux or WSL)")
+    import resource
+
+    def apply() -> None:
+        resource.setrlimit(resource.RLIMIT_FSIZE, (limit, limit))
+
+    return apply
+
+
 class _Process(AbstractContextManager["_Process"]):
-    def __init__(self, name: str, argv: list[str], env: dict[str, str], log_path: Path) -> None:
+    def __init__(
+        self,
+        name: str,
+        argv: list[str],
+        env: dict[str, str],
+        log_path: Path,
+        *,
+        file_size_limit: int | None = None,
+    ) -> None:
         self.name = name
         self._argv, self._env = argv, env
         self._log = log_path.open("wb")
-        self._proc = subprocess.Popen(argv, env=env, stdout=self._log, stderr=subprocess.STDOUT)
+        self._proc = subprocess.Popen(
+            argv,
+            env=env,
+            stdout=self._log,
+            stderr=subprocess.STDOUT,
+            preexec_fn=_file_size_limit(file_size_limit),
+        )
 
     def kill(self) -> None:
         """SIGKILL: no shutdown code runs, like a crash (``kill -9``)."""
@@ -50,12 +82,17 @@ class _Process(AbstractContextManager["_Process"]):
         self._proc.wait()
 
     def restart(self) -> None:
-        """Start again with the same command, environment and data directory."""
+        """Start again with the same command, environment and data directory (no limits)."""
         if self._proc.poll() is None:
             raise RuntimeError(f"{self.name} is still running")
         self._proc = subprocess.Popen(
             self._argv, env=self._env, stdout=self._log, stderr=subprocess.STDOUT
         )
+
+    def terminate(self) -> None:
+        """SIGTERM, and wait: a clean shutdown."""
+        self._proc.terminate()
+        self._proc.wait(timeout=15)
 
     def check_alive(self) -> None:
         if self._proc.poll() is not None:
@@ -141,6 +178,9 @@ class Deployment(AbstractContextManager["Deployment"]):
     def kill(self, name: str) -> None:
         self._nodes[name][0].kill()
 
+    def stop(self, name: str) -> None:
+        self._nodes[name][0].terminate()
+
     def restart(self, name: str) -> None:
         proc, ready = self._nodes[name]
         proc.restart()
@@ -158,7 +198,16 @@ class Deployment(AbstractContextManager["Deployment"]):
         self._stack.close()
 
     # ------------------------------------------------------------- kvstore
-    def kvstore_node(self, name: str, *, fsync: str = "everysec", **env: str) -> Endpoint:
+    def kvstore_node(
+        self,
+        name: str,
+        *,
+        fsync: str = "everysec",
+        env: Mapping[str, str] | None = None,
+        file_size_limit: int | None = None,
+    ) -> Endpoint:
+        """Start one node; ``env`` adds or overrides ``KV_*`` settings."""
+        env = dict(env or {})
         resp_port, http_port = free_port(), free_port()
         node_env = {
             **os.environ,
@@ -172,7 +221,13 @@ class Deployment(AbstractContextManager["Deployment"]):
             **env,
         }
         proc = self._stack.enter_context(
-            _Process(name, [sys.executable, "-m", "kvstore"], node_env, self.dir / f"{name}.log")
+            _Process(
+                name,
+                [sys.executable, "-m", "kvstore"],
+                node_env,
+                self.dir / f"{name}.log",
+                file_size_limit=file_size_limit,
+            )
         )
         ready = self._ready_fn(http_port, env.get("KV_REPLICAOF") is not None)
         self._nodes[name] = (proc, ready)
@@ -195,12 +250,14 @@ class Deployment(AbstractContextManager["Deployment"]):
         for i in range(1, groups + 1):
             primary = self.kvstore_node(f"g{i}-primary", fsync=fsync)
             replica = self.kvstore_node(
-                f"g{i}-replica", fsync=fsync, KV_REPLICAOF=f"127.0.0.1:{primary.resp_port}"
+                f"g{i}-replica",
+                fsync=fsync,
+                env={"KV_REPLICAOF": f"127.0.0.1:{primary.resp_port}"},
             )
             members[f"g{i}"] = (primary, replica)
             spec.append(f"g{i}=127.0.0.1:{primary.resp_port}+127.0.0.1:{replica.resp_port}")
         router = self.kvstore_node(
-            "router", KV_NODE_ROLE="router", KV_SHARDS=",".join(spec), **router_env
+            "router", env={"KV_NODE_ROLE": "router", "KV_SHARDS": ",".join(spec), **router_env}
         )
         return router, members
 
@@ -209,7 +266,9 @@ class Deployment(AbstractContextManager["Deployment"]):
         for i in range(shards):
             shard = self.kvstore_node(f"shard-{i + 1}", fsync=fsync)
             addresses.append(f"127.0.0.1:{shard.resp_port}")
-        return self.kvstore_node("router", KV_NODE_ROLE="router", KV_SHARDS=",".join(addresses))
+        return self.kvstore_node(
+            "router", env={"KV_NODE_ROLE": "router", "KV_SHARDS": ",".join(addresses)}
+        )
 
     # --------------------------------------------------------------- Redis
     def redis(self, redis_server: str, *, fsync: str = "everysec") -> Endpoint:
