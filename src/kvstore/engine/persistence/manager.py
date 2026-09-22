@@ -149,6 +149,8 @@ class Persistence:
     def append(self, payload: bytes) -> None:
         """One command, already RESP-encoded."""
         assert self._writer is not None
+        if self.write_error is not None:
+            return  # writes are refused; only e.g. an expiry's DEL gets here
         try:
             self._writer.append(payload)
         except OSError as exc:
@@ -157,6 +159,12 @@ class Persistence:
     def commit(self) -> None:
         writer = self._writer
         if writer is None:
+            return
+        if self.write_error is not None:
+            # Failed already. The failed bytes are still in the file buffer and
+            # a flush would fail again -- on every batch, reads included, so
+            # the node would stop answering entirely (found by a real disk-full
+            # run: benchmarks/chaos.py). Writes get MISCONF from check_writable.
             return
         if writer.background_error is not None:
             error, writer.background_error = writer.background_error, None
@@ -293,7 +301,13 @@ class Persistence:
     def close(self) -> None:
         self.wait_rewrite()
         if self._writer is not None:
-            self._writer.close()
+            try:
+                self._writer.close()
+            except OSError:
+                # After a failed write the unwritten tail was never acknowledged;
+                # recovery truncates whatever part of it reached the disk.
+                if self.write_error is None:
+                    raise
             self._writer = None
 
     def stats(self) -> PersistenceStats:

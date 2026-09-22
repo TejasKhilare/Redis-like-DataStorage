@@ -524,6 +524,39 @@ def test_fsync_everysec_runs_in_the_background(data_dir: Path, clock: FakeClock)
 
 
 # --------------------------------------------------------- write failures
+def test_a_full_disk_leaves_reads_working(data_dir: Path, clock: FakeClock) -> None:
+    """The real mechanics: bytes sit in the file buffer and the *flush* fails.
+
+    Regression: the failed bytes stayed buffered, so every later commit --
+    after reads too -- retried the flush and failed, and the node stopped
+    answering altogether (found by the disk-full run in benchmarks/chaos.py).
+    """
+    import errno
+    import io
+
+    class FullDisk(io.RawIOBase):
+        def writable(self) -> bool:
+            return True
+
+        def write(self, data: Any) -> int:
+            raise OSError(errno.EFBIG, "File too large")
+
+    engine = open_engine(data_dir, clock)
+    engine.execute("SET", "a", "1")
+    writer = engine.persistence._writer  # type: ignore[union-attr]
+    assert writer is not None
+    writer._file.close()
+    writer._file = io.BufferedWriter(FullDisk())  # type: ignore[assignment]
+    with pytest.raises(PersistenceWriteError, match="File too large"):
+        engine.execute("SET", "b", "2")  # buffered fine, the commit's flush fails
+    for _ in range(3):  # reads keep working, every time
+        assert engine.execute("GET", "a") == "1"
+    with pytest.raises(PersistenceWriteError) as info:
+        engine.execute("SET", "c", "3")
+    assert info.value.to_resp().startswith("MISCONF")
+    engine.close()  # the unflushable tail doesn't make shutdown fail
+
+
 def test_aof_write_failure_refuses_further_writes(
     data_dir: Path, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
