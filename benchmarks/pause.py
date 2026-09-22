@@ -3,24 +3,37 @@
     python -m benchmarks.pause                       # 10k, 100k and 1M keys
     python -m benchmarks.pause --merge-into benchmarks/results/run.json
 
-Without fork(), a rewrite starts by copying the keyspace on the event loop
-(ADR-0006); no command runs during that copy. This measures the copy (the
-*pause*) and the time the background thread then takes to write the
-snapshot, in-process, for string keys and for hashes. Each size is
-measured several times and the median reported.
+Without fork(), a rewrite has to copy the keyspace while no command runs.
+Two measurements per size:
+
+* **copy**: the one-shot copy on its own (``Store.snapshot()``) and the time
+  the background thread then takes to write the snapshot -- the Phase 3
+  numbers;
+* **stall**: a running event loop with a ticker coroutine records the
+  longest gap between its turns -- how long any command would have waited --
+  while a whole rewrite runs, once with the one-shot copy and once with the
+  incremental copy (slices between commands, copy-on-write barrier). The gap
+  includes the GIL contention from the snapshot-writer thread, which clients
+  feel too.
+
+Each size is measured several times and the median reported.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import statistics
 import sys
 import tempfile
+import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
 from kvstore.engine import Engine
+from kvstore.engine.cron import run_cron
 
 _BATCH = 1000
 
@@ -39,10 +52,44 @@ def _fill(engine: Engine, keys: int, kind: str, value: str) -> None:
                 engine.execute("HSET", f"key:{i:012d}", *fields)
 
 
+async def _stall_during_rewrite(engine: Engine, *, incremental: bool) -> tuple[float, float]:
+    """``(longest event-loop gap, whole rewrite)`` in ms, with the cron loop driving it."""
+    persistence = engine.persistence
+    assert persistence is not None
+    engine.incremental_snapshots = incremental
+    longest = 0.0
+    running = True
+
+    async def ticker() -> None:
+        nonlocal longest
+        last = time.perf_counter()
+        while running:
+            await asyncio.sleep(0)
+            now = time.perf_counter()
+            longest = max(longest, now - last)
+            last = now
+
+    cron = asyncio.create_task(run_cron(engine, interval_s=0.01, expiry_sample_size=20))
+    tick = asyncio.create_task(ticker())
+    await asyncio.sleep(0.05)
+    longest = 0.0
+    started = time.perf_counter()
+    engine.start_rewrite()  # the one-shot copy blocks right here
+    while persistence.rewrite_in_progress:  # noqa: ASYNC110 - the cron finishes it; no event
+        await asyncio.sleep(0.005)
+    whole = time.perf_counter() - started
+    running = False
+    await tick
+    cron.cancel()
+    with suppress(asyncio.CancelledError):
+        await cron
+    return round(longest * 1000, 2), round(whole * 1000, 1)
+
+
 def measure(
     keys: int, kind: str = "string", *, reps: int = 3, value_size: int = 64
 ) -> dict[str, Any]:
-    pauses, writes = [], []
+    pauses, writes, stalls, stalls_inc, rewrites_inc = [], [], [], [], []
     with (
         tempfile.TemporaryDirectory(prefix="kvbench-pause-") as tmp,
         Engine(data_dir=Path(tmp), aof_fsync="no", aof_rewrite_percentage=0) as engine,
@@ -51,12 +98,17 @@ def measure(
         persistence = engine.persistence
         assert persistence is not None
         for _ in range(reps):
-            engine.save()  # start_rewrite(), then wait for the writer and finalize
+            engine.save()  # one-shot copy, then wait for the writer and finalize
             stats = persistence.stats()
             assert stats.last_snapshot_pause_ms is not None
             assert stats.last_rewrite_duration_ms is not None
             pauses.append(stats.last_snapshot_pause_ms)
             writes.append(stats.last_rewrite_duration_ms)
+            stall, _ = asyncio.run(_stall_during_rewrite(engine, incremental=False))
+            stalls.append(stall)
+            stall, whole = asyncio.run(_stall_during_rewrite(engine, incremental=True))
+            stalls_inc.append(stall)
+            rewrites_inc.append(whole)
         size = persistence.stats().aof_base_size
     return {
         "keys": keys,
@@ -66,6 +118,10 @@ def measure(
         "pause_ms_max": round(max(pauses), 2),
         "background_write_ms": round(statistics.median(writes), 1),
         "snapshot_bytes": size,
+        "stall_ms_oneshot": round(statistics.median(stalls), 2),
+        "stall_ms_incremental": round(statistics.median(stalls_inc), 2),
+        "stall_ms_incremental_max": round(max(stalls_inc), 2),
+        "rewrite_ms_incremental": round(statistics.median(rewrites_inc), 1),
     }
 
 
@@ -77,10 +133,11 @@ def run(sizes: list[int], *, reps: int = 3) -> list[dict[str, Any]]:
                 continue  # 1M hashes x 10 fields needs several GB in CPython
             row = measure(keys, kind, reps=reps)
             print(
-                f"{kind:>6} x {keys:>9,}: pause {row['pause_ms']:>9,.1f} ms "
-                f"(max {row['pause_ms_max']:,.1f}), "
-                f"background write {row['background_write_ms']:>7,.0f} ms, "
-                f"snapshot {row['snapshot_bytes'] / 1e6:,.1f} MB",
+                f"{kind:>6} x {keys:>9,}: copy {row['pause_ms']:>8,.1f} ms, "
+                f"write {row['background_write_ms']:>7,.0f} ms | longest stall: "
+                f"one-shot {row['stall_ms_oneshot']:>8,.1f} ms, "
+                f"incremental {row['stall_ms_incremental']:>6,.1f} ms "
+                f"(whole rewrite {row['rewrite_ms_incremental']:,.0f} ms)",
                 flush=True,
             )
             rows.append(row)
@@ -92,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sizes", default="10000,100000,1000000", help="comma-separated key counts")
     p.add_argument("--reps", type=int, default=3)
     p.add_argument("--merge-into", type=Path, help="add the rows to a suite result file")
+    p.add_argument("--out", type=Path, help="write the rows to their own JSON file")
     args = p.parse_args(argv)
     rows = run([int(size) for size in args.sizes.split(",")], reps=args.reps)
     if args.merge_into:
@@ -99,6 +157,10 @@ def main(argv: list[str] | None = None) -> int:
         data["snapshot_pause"] = rows
         args.merge_into.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
         print(f"added to {args.merge_into}")
+    if args.out:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(rows, indent=1) + "\n", encoding="utf-8")
+        print(f"wrote {args.out}")
     return 0
 
 

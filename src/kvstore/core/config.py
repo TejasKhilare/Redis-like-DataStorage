@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     aof_fsync: FsyncPolicyName = "everysec"
     aof_rewrite_percentage: int = Field(default=100, ge=0, description="0 disables auto-rewrite.")
     aof_rewrite_min_bytes: int = Field(default=64 * 1024 * 1024, ge=0)
+    incremental_snapshots: bool = Field(
+        default=True, description="Copy the keyspace for a rewrite or full resync in slices."
+    )
+    snapshot_slice_ms: float = Field(
+        default=2.0, ge=0, description="Time budget of one slice of an incremental copy."
+    )
+    snapshot_slice_keys: int = Field(default=256, gt=0, description="Keys copied per chunk.")
 
     # ---- replication (shard only)
     replicaof: str | None = Field(

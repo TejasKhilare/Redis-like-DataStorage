@@ -94,7 +94,7 @@ class PrimaryReplication:
     def __init__(
         self,
         state: ReplicationState,
-        snapshot: Callable[[], list[SnapshotRecord]],
+        snapshot: Callable[[], asyncio.Future[list[SnapshotRecord]]],
         *,
         timeout_s: float = 5.0,
         clock: Callable[[], float] = time.time,
@@ -162,21 +162,24 @@ class PrimaryReplication:
     ) -> None:
         """Run one replica connection until it closes (the PSYNC takeover)."""
         host = str((writer.get_extra_info("peername") or ("?", 0))[0])
-        # Snapshot and offset must be captured together, with no await in
-        # between: the snapshot then holds exactly the stream up to `start`.
+        # The snapshot starts and the offset is read together, with no await in
+        # between: the snapshot then holds exactly the stream up to `start`
+        # (copied incrementally, it still reflects this instant).
         full = not self.state.can_continue(replid, offset)
+        copying: asyncio.Future[list[SnapshotRecord]] | None = None
         if full:
             self.active = True
-            records = self._snapshot()
+            copying = self._snapshot()
             start = self.state.offset
         else:
             start = offset
         replica = ConnectedReplica(next(self._ids), host, 0, writer, "sync", sent_offset=start)
         self.replicas[replica.id] = replica
         try:
-            if full:
+            if copying is not None:
                 self.full_resyncs += 1
                 writer.write(b"+FULLRESYNC %s %d\r\n" % (self.state.replid.encode(), start))
+                records = await copying
                 payload = await asyncio.to_thread(
                     encode_snapshot, records, created_at=self._clock()
                 )

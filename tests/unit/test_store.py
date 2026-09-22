@@ -207,7 +207,7 @@ def test_snapshot_is_a_detached_copy(clock: FakeClock) -> None:
 
     by_key = {record[0]: record for record in records}
     assert "gone" not in by_key
-    assert by_key["l"] == ("l", "list", ["a", "b"], None)
+    assert by_key["l"] == ("l", "list", ("a", "b"), None)  # tuples: invisible to the GC
     assert by_key["s"][3] == clock.now + 98
 
     copy = make_store(clock)

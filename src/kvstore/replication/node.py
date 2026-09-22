@@ -81,7 +81,7 @@ class ShardNode:
         self._data_dir = data_dir
         self.state = ReplicationState(Backlog(self.settings.backlog_bytes))
         self.primary = PrimaryReplication(
-            self.state, engine.store.snapshot, timeout_s=self.settings.timeout_s
+            self.state, self._begin_snapshot, timeout_s=self.settings.timeout_s
         )
         self.role: Role = "primary"
         self.link: ReplicaLink | None = None
@@ -91,6 +91,27 @@ class ShardNode:
         self.stats = CommandStats(enabled=metrics)
         engine.replication = self.primary
         engine.extra_info = self._info_sections
+
+    def _begin_snapshot(self) -> asyncio.Future[list[SnapshotRecord]]:
+        """The keyspace as of now, for a replica's full resync.
+
+        Copied incrementally when the engine does that (no long pause) and no
+        other copy is running; otherwise in one go.
+        """
+        future: asyncio.Future[list[SnapshotRecord]] = asyncio.get_running_loop().create_future()
+        engine = self.engine
+        if engine.incremental_snapshots and not engine.snapshot_in_progress:
+            gcpolicy.hold()  # no full GC scans of the keyspace while copying
+
+            def done(records: list[SnapshotRecord]) -> None:
+                gcpolicy.release()
+                if not future.done():  # the replica may have gone meanwhile
+                    future.set_result(records)
+
+            engine.begin_snapshot(done)
+        else:
+            future.set_result(engine.store.snapshot())
+        return future
 
     # ------------------------------------------------------------ lifecycle
     def start(self, replicaof: str | None = None) -> None:

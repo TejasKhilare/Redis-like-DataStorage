@@ -77,6 +77,8 @@ class Store:
         self._rng = rng or random.Random()
         self._data: dict[str, Entry] = {}
         self._volatile = SampleableKeySet()
+        self._snapshot_epoch = 0
+        self.snapshot_job: SnapshotJob | None = None
 
     def __len__(self) -> int:
         return len(self._data)
@@ -157,6 +159,7 @@ class Store:
             return
         self.used_memory -= old.size
         entry = Entry(value, old.expires_at if keep_ttl else None)
+        entry.copied = self._snapshot_epoch  # a new value: not part of a running snapshot
         if entry.expires_at is None:
             self._volatile.discard(key)
         entry.size = self._entry_size(key, value)
@@ -199,6 +202,9 @@ class Store:
         entry.size = size
 
     def clear(self) -> None:
+        job = self.snapshot_job
+        if job is not None:
+            job.step(job.remaining)  # copy everything still pending before it goes
         self._data.clear()
         self._volatile = SampleableKeySet()
         self._eviction.clear()
@@ -261,41 +267,47 @@ class Store:
         """A point-in-time copy of every live key, safe to serialize on another thread.
 
         Strings are immutable and shared; collections are copied into plain
-        Python containers. This O(n) copy is what replaces fork()'s
-        copy-on-write, which Redis uses to snapshot without pausing.
+        Python containers. Done in one go, this O(n) copy pauses every
+        command; :meth:`begin_snapshot` spreads the same work over slices.
         """
         now = self._clock()
-        records: list[SnapshotRecord] = []
-        for key, entry in self._data.items():
-            if entry.is_expired(now):
-                continue
-            value = entry.value
-            payload: Any
-            if isinstance(value, str):
-                payload = value
-            elif isinstance(value, ListValue | SetValue):
-                payload = list(value)
-            elif isinstance(value, HashValue):
-                payload = list(value.items())
-            else:
-                payload = list(value.items())
-            records.append((key, type_name(value), payload, entry.expires_at))
-        return records
+        return [_record(k, e) for k, e in self._data.items() if not e.is_expired(now)]
 
     def record(self, key: str) -> SnapshotRecord | None:
         """One key as a snapshot record (DUMP, and moving a key to another shard)."""
         entry = self._lookup(key)
         if entry is None:
             return None
-        value = entry.value
-        payload: Any
-        if isinstance(value, str):
-            payload = value
-        elif isinstance(value, ListValue | SetValue):
-            payload = list(value)
-        else:
-            payload = list(value.items())
-        return key, type_name(value), payload, entry.expires_at
+        return _record(key, entry)
+
+    # ------------------------------------------------ incremental snapshots
+    def begin_snapshot(
+        self, on_done: Callable[[list[SnapshotRecord]], None] | None = None
+    ) -> SnapshotJob:
+        """Start copying the keyspace as it is *now*, a slice at a time.
+
+        The only O(n) work done right away is a list of the keys (references,
+        not values). :meth:`SnapshotJob.step` copies the values in slices;
+        meanwhile :meth:`snapshot_barrier` must be called before any key is
+        modified, so its value as of now is copied first -- copy-on-write, done
+        by hand instead of by ``fork()``.
+        """
+        if self.snapshot_job is not None:
+            raise RuntimeError("a snapshot is already being taken")
+        self._snapshot_epoch += 1
+        self.snapshot_job = SnapshotJob(
+            self, list(self._data), self._snapshot_epoch, self._clock(), on_done
+        )
+        return self.snapshot_job
+
+    def snapshot_barrier(self, key: str) -> None:
+        """Copy ``key``'s current value into the running snapshot before it changes."""
+        job = self.snapshot_job
+        if job is None:
+            return
+        entry = self._data.get(key)
+        if entry is not None and entry.copied != job.epoch:
+            job.take(key, entry)
 
     def load_record(self, record: SnapshotRecord) -> None:
         key, kind, payload, expires_at = record
@@ -341,12 +353,15 @@ class Store:
             self.on_expire(key)
 
     def _insert(self, key: str, entry: Entry) -> None:
+        entry.copied = self._snapshot_epoch  # created after a running snapshot began
         entry.size = self._entry_size(key, entry.value)
         self.used_memory += entry.size
         self._data[key] = entry
         self._eviction.on_insert(key)
 
     def _remove(self, key: str) -> None:
+        if self.snapshot_job is not None:
+            self.snapshot_barrier(key)  # expiry and eviction remove keys too
         entry = self._data.pop(key)
         self.used_memory -= entry.size
         self._volatile.discard(key)
@@ -355,3 +370,77 @@ class Store:
     @staticmethod
     def _entry_size(key: str, value: Value) -> int:
         return str_size(key) + ENTRY_OVERHEAD + value_size(value)
+
+
+def _record(key: str, entry: Entry) -> SnapshotRecord:
+    # Tuples, not lists: CPython stops tracking a tuple of strings or numbers,
+    # so a snapshot's millions of small containers don't slow every GC pass.
+    value = entry.value
+    payload: Any
+    if isinstance(value, str):
+        payload = value
+    elif isinstance(value, ListValue | SetValue):
+        payload = tuple(value)
+    else:
+        payload = tuple(value.items())
+    return key, type_name(value), payload, entry.expires_at
+
+
+class SnapshotJob:
+    """A point-in-time copy of the keyspace, taken in slices between commands.
+
+    Every entry carries the epoch of the last snapshot it was accounted for
+    in. At the start, every existing entry is behind the new epoch; entries
+    created afterwards are stamped with it (they are not part of this
+    snapshot). An entry is copied exactly once -- by a slice, or earlier by
+    the barrier when a command is about to change or remove it -- so the
+    result is the keyspace as it was when the job began.
+
+    ``on_done`` receives the records exactly once, whoever finishes the job:
+    the slices, or a FLUSHALL that copies what is left before clearing.
+    """
+
+    def __init__(
+        self,
+        store: Store,
+        keys: list[str],
+        epoch: int,
+        now: float,
+        on_done: Callable[[list[SnapshotRecord]], None] | None = None,
+    ) -> None:
+        self._store = store
+        self._keys = keys
+        self._pos = 0
+        self._on_done = on_done
+        self.epoch = epoch
+        self.started_at = now
+        self.records: list[SnapshotRecord] = []
+
+    @property
+    def done(self) -> bool:
+        return self._pos >= len(self._keys)
+
+    @property
+    def remaining(self) -> int:
+        return len(self._keys) - self._pos
+
+    def take(self, key: str, entry: Entry) -> None:
+        entry.copied = self.epoch
+        if not entry.is_expired(self.started_at):
+            self.records.append(_record(key, entry))
+
+    def step(self, max_keys: int) -> bool:
+        """Copy up to ``max_keys`` more keys; returns True once everything is copied."""
+        data, end = self._store._data, min(self._pos + max_keys, len(self._keys))
+        for key in self._keys[self._pos : end]:
+            entry = data.get(key)
+            if entry is not None and entry.copied != self.epoch:
+                self.take(key, entry)
+        self._pos = end
+        if self.done and self._store.snapshot_job is self:
+            self._store.snapshot_job = None
+            self._keys = []
+            callback, self._on_done = self._on_done, None
+            if callback is not None:
+                callback(self.records)
+        return self.done

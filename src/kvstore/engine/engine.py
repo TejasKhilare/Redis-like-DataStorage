@@ -114,6 +114,15 @@ class Engine:
         )
         self._clock = clock
         self._replaying = False
+        # Copy the keyspace in slices (driven by run_cron) instead of in one
+        # pause. Off by default: without a driver, a copy would never finish.
+        self.incremental_snapshots = False
+        # A slice copies chunks of keys until its time budget is spent: copying
+        # cost depends on the values (a 10-field hash costs ~13 strings).
+        self.snapshot_slice_keys = 256
+        self.snapshot_slice_ms = 2.0
+        self._snapshot_pause_ms = 0.0
+        self._gc_held = False
         # Set by the node that owns this engine (see kvstore.replication).
         self.replication: ReplicationFeed | None = None
         self.extra_info: Callable[[], dict[str, dict[str, Any]]] | None = None
@@ -159,6 +168,12 @@ class Engine:
         with self._lock:
             if self._persistence is not None:
                 self._persistence.close()
+            self._release_gc()
+
+    def _release_gc(self) -> None:
+        if self._gc_held and not (self._persistence and self._persistence.rewrite_in_progress):
+            self._gc_held = False
+            gcpolicy.release()
 
     def __enter__(self) -> Self:
         self.open()
@@ -185,6 +200,9 @@ class Engine:
                     raise PersistenceError("engine is not open; call open() before writing")
                 self._persistence.check_writable()
             keys = [k for k in spec.keys(arg_list) if isinstance(k, str)]
+            if spec.is_write and self.store.snapshot_job is not None:
+                for key in keys:  # copy-on-write for the snapshot being taken
+                    self.store.snapshot_barrier(key)
             if DENYOOM in spec.flags and not self.store.eviction_policy.evicts:
                 new_keys = sum(1 for k in set(keys) if self.store.peek(k) is None)
                 if self.store.over_limit(extra_keys=new_keys):
@@ -298,9 +316,13 @@ class Engine:
             raise UnknownCommandError(f"unknown command '{command}'")
         spec.check_arity(args)
         with self._lock:
+            keys = [k for k in spec.keys(args) if isinstance(k, str)]
+            if self.store.snapshot_job is not None:
+                for key in keys:
+                    self.store.snapshot_barrier(key)
             expiry, self.store.expiry_enabled = self.store.expiry_enabled, False
             try:
-                self._run(spec, args, [k for k in spec.keys(args) if isinstance(k, str)])
+                self._run(spec, args, keys)
             finally:
                 self.store.expiry_enabled = expiry
             if self._commit_depth == 0:
@@ -334,18 +356,64 @@ class Engine:
         if self._persistence is None:
             raise CommandError("persistence is disabled on this node")
         with self._lock:
-            self._persistence.check_writable()
-            self._persistence.poll()  # finalize a finished job the cron hasn't picked up yet
+            persistence = self._persistence
+            persistence.check_writable()
+            persistence.poll()  # finalize a finished job the cron hasn't picked up yet
+            self._release_gc()
+            gcpolicy.hold()  # released when the rewrite finishes (see _poll_rewrite)
+            self._gc_held = True
+            if self.incremental_snapshots and self.store.snapshot_job is None:
+                persistence.begin_rewrite()
+
+                def write(records: list[SnapshotRecord]) -> None:
+                    persistence.finish_copy(records, pause_ms=self._snapshot_pause_ms)
+
+                self.begin_snapshot(write)
+                return
             started = time.perf_counter()
             records = self.store.snapshot()
             pause_ms = round((time.perf_counter() - started) * 1000, 3)
-            self._persistence.start_rewrite(records, pause_ms=pause_ms)
+            persistence.start_rewrite(records, pause_ms=pause_ms)
+
+    def begin_snapshot(self, on_done: Callable[[list[SnapshotRecord]], None]) -> None:
+        """Start an incremental copy of the keyspace as of now; ``on_done`` gets it.
+
+        :meth:`step_snapshot` advances it (the shard's cron loop calls it
+        between commands until it is done).
+        """
+        with self._lock:
+            started = time.perf_counter()
+            self.store.begin_snapshot(on_done)
+            self._snapshot_pause_ms = round((time.perf_counter() - started) * 1000, 3)
+
+    @property
+    def snapshot_in_progress(self) -> bool:
+        return self.store.snapshot_job is not None
+
+    def step_snapshot(self) -> bool:
+        """Copy one slice of the running snapshot; returns whether one is still running."""
+        with self._lock:
+            job = self.store.snapshot_job
+            if job is None:
+                return False
+            started = time.perf_counter()
+            deadline = started + self.snapshot_slice_ms / 1000
+            while True:
+                done = job.step(self.snapshot_slice_keys)  # calls on_done when finished
+                if done or time.perf_counter() >= deadline:
+                    break
+            pause = (time.perf_counter() - started) * 1000
+            self._snapshot_pause_ms = round(max(self._snapshot_pause_ms, pause), 3)
+            return not done
 
     def save(self) -> None:
         """SAVE: a rewrite that blocks until the snapshot is on disk."""
         self.start_rewrite()
+        while self.step_snapshot():
+            pass
         assert self._persistence is not None
         self._persistence.wait_rewrite()
+        self._release_gc()
         if self._persistence.last_rewrite_status != "ok":
             raise PersistenceError("snapshot failed, see server logs")
 
@@ -360,6 +428,7 @@ class Engine:
                 self._commit()  # the DELs, to the AOF and the replicas
             if self._persistence is not None and self._persistence.is_open:
                 self._persistence.poll()
+                self._release_gc()  # whoever finished the rewrite (poll, SAVE, ...)
                 if self._persistence.should_auto_rewrite():
                     self.start_rewrite()
             return expired

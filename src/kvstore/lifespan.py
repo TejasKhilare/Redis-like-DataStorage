@@ -21,6 +21,7 @@ from kvstore.cluster.topology import ClusterConfig
 from kvstore.core.config import Settings
 from kvstore.engine import Engine
 from kvstore.engine.cron import run_cron
+from kvstore.observability import gcpolicy
 from kvstore.protocol.tcp_server import BatchHandler, CommandHandler, GroupCommit, TCPServer
 from kvstore.replication.node import ReplicationSettings, ShardNode
 from kvstore.schemas.common import ReadinessResponse
@@ -65,6 +66,10 @@ async def shard_lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     engine = build_engine(settings)
     engine.open()  # loads snapshot + AOF; blocking is fine before we accept traffic
+    gcpolicy.install_pause_metrics()
+    engine.incremental_snapshots = settings.incremental_snapshots  # run_cron drives the copy
+    engine.snapshot_slice_keys = settings.snapshot_slice_keys
+    engine.snapshot_slice_ms = settings.snapshot_slice_ms
     # The engine's execute is synchronous, so a pipelined batch runs atomically.
     # Every connection served in one loop iteration then shares one AOF commit
     # (and fsync) before any of them gets a reply.

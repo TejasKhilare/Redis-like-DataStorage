@@ -93,6 +93,7 @@ class Persistence:
         self._manifest = Manifest(snapshot=None, aofs=[aof_name(1)])
         self._writer: AOFWriter | None = None
         self._job: _RewriteJob | None = None
+        self._copying: str | None = None  # AOF switched; the keyspace is still being copied
         self.write_error: str | None = None
         # stats
         self.fsync_seconds = Histogram()  # across AOF generations
@@ -113,7 +114,7 @@ class Persistence:
 
     @property
     def rewrite_in_progress(self) -> bool:
-        return self._job is not None
+        return self._job is not None or self._copying is not None
 
     # ------------------------------------------------------------ startup
     def load(self, load_record: Callable[[SnapshotRecord], None], apply: ApplyFn) -> None:
@@ -181,7 +182,17 @@ class Persistence:
     # ------------------------------------------------------------ rewrite
     def start_rewrite(self, records: list[SnapshotRecord], *, pause_ms: float) -> None:
         """Steps 1b and 2 (see module docstring). ``records`` is the step-1a copy."""
-        if self._job is not None:
+        self.begin_rewrite()
+        self.finish_copy(records, pause_ms=pause_ms)
+
+    def begin_rewrite(self) -> None:
+        """Step 1b: switch to a new AOF generation now, where the snapshot is taken.
+
+        The copy may then be made incrementally; :meth:`finish_copy` hands it
+        over. Until then the manifest lists the old files and the new AOF,
+        which recover everything, like the rest of a rewrite.
+        """
+        if self._job is not None or self._copying is not None:
             raise CommandError("Background append only file rewriting already in progress")
         assert self._writer is not None
         generation = generation_of(self._manifest.aofs[-1]) + 1
@@ -192,8 +203,12 @@ class Persistence:
         self._manifest = Manifest(self._manifest.snapshot, [*self._manifest.aofs, new_aof])
         self._manifest.save(self.data_dir)
         self._writer = new_writer
+        self._copying = snapshot_name(generation)
 
-        snapshot = snapshot_name(generation)
+    def finish_copy(self, records: list[SnapshotRecord], *, pause_ms: float) -> None:
+        """Step 2: write the copy to the snapshot file on a background thread."""
+        snapshot, self._copying = self._copying, None
+        assert snapshot is not None
         future: Future[int] = Future()
         created_at = self._clock()
 
@@ -249,7 +264,12 @@ class Persistence:
 
     def should_auto_rewrite(self) -> bool:
         """Redis's auto-aof-rewrite rule: AOF big enough and grown by N% over the base."""
-        if self._job is not None or not self.rewrite_percentage or self._writer is None:
+        if (
+            self._job is not None
+            or self._copying is not None
+            or not self.rewrite_percentage
+            or self._writer is None
+        ):
             return False
         size = self._writer.size_bytes
         if size < self.rewrite_min_bytes:
