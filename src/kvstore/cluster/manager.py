@@ -182,6 +182,13 @@ class ClusterManager:
             health.replicating, health.link_up = None, False
         return True
 
+    def is_healthy(self, address: str) -> bool:
+        """Answering, and if a replica, linked to its primary (for replica reads)."""
+        health = self.health.get(address)
+        if health is None or health.state != "healthy":
+            return False
+        return health.role != "slave" or health.link_up
+
     def _client(self, address: str) -> KVClient:
         client = self._clients.get(address)
         if client is None:

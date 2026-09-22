@@ -14,6 +14,7 @@ import pytest
 from kvstore.cluster.manager import ClusterManager, parse_info
 from kvstore.cluster.router import ShardRouter
 from kvstore.cluster.topology import ClusterConfig
+from kvstore.core.exceptions import NotEnoughReplicasError
 from kvstore.protocol.client import KVClient
 from kvstore.protocol.tcp_server import TCPServer
 from tests.helpers import make_settings, running_app
@@ -178,3 +179,65 @@ async def test_failover_needs_a_replica(tmp_path: Path) -> None:
             response = await http.post("/v1/cluster/shards/shard-1/failover")
             assert response.status_code == 502
             assert "no healthy replica" in response.json()["error"]["message"]
+
+
+async def test_write_concern_acknowledges_only_replicated_writes(tmp_path: Path) -> None:
+    async with AsyncExitStack() as stack:
+        primary = await stack.enter_async_context(start_node(tmp_path, "p"))
+        replica = await stack.enter_async_context(
+            start_node(tmp_path, "r", replicaof=primary.address)
+        )
+        await in_sync(primary, replica)
+        settings = make_settings(
+            tmp_path,
+            node_role="router",
+            data_dir=tmp_path / "router",
+            shards=f"a={primary.address}+{replica.address}",
+            wait_replicas=1,
+            wait_timeout_s=0.3,
+            failover_enabled=False,
+        )
+        app, _ = await stack.enter_async_context(running_app(settings))
+        async with KVClient("127.0.0.1", app.state.tcp_server.port, timeout_s=5) as client:
+            assert await client.execute("SET", "k", "v") == "OK"
+            assert replica.run("GET", "k") == "v"  # already there when we were told OK
+            assert await client.execute("GET", "k") == "v"  # reads don't wait
+
+            replica.node.link.cancel()  # type: ignore[union-attr]
+            primary.node.primary.disconnect_all()
+            with pytest.raises(NotEnoughReplicasError, match="0 of 1"):
+                await client.execute("SET", "k", "unconfirmed")
+
+
+async def test_reads_can_be_served_by_healthy_replicas(tmp_path: Path) -> None:
+    async with AsyncExitStack() as stack:
+        primary = await stack.enter_async_context(start_node(tmp_path, "p"))
+        replica = await stack.enter_async_context(
+            start_node(tmp_path, "r", replicaof=primary.address)
+        )
+        await in_sync(primary, replica)
+        settings = make_settings(
+            tmp_path,
+            node_role="router",
+            data_dir=tmp_path / "router",
+            shards=f"a={primary.address}+{replica.address}",
+            read_from_replicas=True,
+            heartbeat_interval_s=0.05,
+        )
+        app, _ = await stack.enter_async_context(running_app(settings))
+        manager: ClusterManager = app.state.manager
+        await eventually(lambda: manager.is_healthy(replica.address))
+        async with KVClient("127.0.0.1", app.state.tcp_server.port, timeout_s=5) as client:
+            assert await client.execute("SET", "k", "v") == "OK"  # writes: the primary
+            await in_sync(primary, replica)
+            hits = primary.engine.info().keyspace_hits
+            for _ in range(5):
+                assert await client.execute("GET", "k") == "v"
+            assert replica.engine.info().keyspace_hits == 5  # reads: the replica
+            assert primary.engine.info().keyspace_hits == hits
+
+            # A replica whose link is down may be stale: reads go back to the primary.
+            replica.node.link.cancel()  # type: ignore[union-attr]
+            await eventually(lambda: not manager.is_healthy(replica.address))
+            assert await client.execute("GET", "k") == "v"
+            assert primary.engine.info().keyspace_hits == hits + 1

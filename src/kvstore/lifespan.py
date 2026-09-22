@@ -154,6 +154,9 @@ async def router_lifespan(app: FastAPI) -> AsyncIterator[None]:
         pool_size=settings.shard_pool_size,
         retries=settings.shard_retries,
         retry_backoff_s=settings.shard_retry_backoff_s,
+        wait_replicas=settings.wait_replicas,
+        wait_timeout_s=settings.wait_timeout_s,
+        read_from_replicas=settings.read_from_replicas,
     )
     tcp_server = _tcp_server(
         settings, shard_router.execute, batch_handler=shard_router.execute_batch
@@ -167,6 +170,7 @@ async def router_lifespan(app: FastAPI) -> AsyncIterator[None]:
         dead_after_s=settings.dead_after_s,
         failover_enabled=settings.failover_enabled,
     )
+    shard_router.is_healthy = manager.is_healthy
 
     async def readiness_probe() -> ReadinessResponse:
         statuses = await shard_router.node_status()

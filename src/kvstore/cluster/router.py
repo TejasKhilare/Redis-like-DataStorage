@@ -14,11 +14,21 @@ request never reached the node (connection refused), when the node refused
 it without running it (``READONLY`` from a demoted primary, ``TRYAGAIN``
 during a key move, ``ASK`` after one), or when every command is a read.
 A write that timed out is reported, not retried.
+
+With ``read_from_replicas``, a batch of reads goes to one of the group's
+healthy replicas (round-robin) instead of its primary: more read capacity,
+but reads may lag the primary by the replication delay.
+
+With ``wait_replicas`` set, every batch that writes ends with ``WAIT`` on
+the same connection, and a write is acknowledged only once that many
+replicas have it: a failover then loses no acknowledged write, at the cost
+of a replication round trip per batch.
 """
 
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 import time
 from collections.abc import Awaitable, Callable, Sequence
@@ -35,6 +45,7 @@ from kvstore.core.exceptions import (
     InvalidArgumentError,
     KVStoreError,
     NodeUnavailableError,
+    NotEnoughReplicasError,
     ReadOnlyReplicaError,
     TryAgainError,
     UnknownCommandError,
@@ -108,6 +119,9 @@ class ShardRouter:
         pool_size: int = 2,
         retries: int = 3,
         retry_backoff_s: float = 0.05,
+        wait_replicas: int = 0,
+        wait_timeout_s: float = 1.0,
+        read_from_replicas: bool = False,
         on_stale: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         if not isinstance(config, ClusterConfig):
@@ -117,6 +131,12 @@ class ShardRouter:
         self._retries = retries
         self._backoff_s = retry_backoff_s
         self._on_stale = on_stale
+        self._wait_replicas = wait_replicas
+        self._wait_timeout_ms = round(wait_timeout_s * 1000)
+        self._read_from_replicas = read_from_replicas
+        self._replica_turn = itertools.count()
+        # Which replicas may serve reads (the cluster manager's view); all if unset.
+        self.is_healthy: Callable[[str], bool] | None = None
         self._pools: dict[str, KVClientPool] = {}
         self.config = config
         self.ring: ConsistentHashRing = config.ring()
@@ -234,6 +254,9 @@ class ShardRouter:
         results: list[Any] = [None] * len(commands)
         todo = list(range(len(commands)))
         readonly = all(self._is_read(commands[i]) for i in todo)
+        # Not while keys are moving: a replica would answer "missing" for a
+        # key its primary has already handed over, instead of -ASK.
+        replica = readonly and self._read_from_replicas and self.config.rebalance is None
         redirect: dict[int, str] = {}
         for attempt in range(self._retries + 1):
             if attempt:
@@ -245,7 +268,7 @@ class ShardRouter:
                 # primary of the command's group, re-routed after the first try
                 # because a failover or rebalance may have happened meanwhile.
                 address = redirect.get(i) or self._address(
-                    commands[i], shard if not attempt else None
+                    commands[i], shard if not attempt else None, replica=replica
                 )
                 if isinstance(address, KVStoreError):
                     results[i] = address
@@ -255,7 +278,7 @@ class ShardRouter:
             stale = False
             for address, idxs in by_address.items():
                 try:
-                    replies = await self.pool(address).pipeline([commands[i] for i in idxs])
+                    replies = await self._exchange(address, [commands[i] for i in idxs])
                 except ConnectFailedError as exc:
                     # Never sent: always safe to retry. The primary may have
                     # failed, so ask for a fresher config too.
@@ -287,8 +310,30 @@ class ShardRouter:
             todo = sorted(retry)
         return results
 
-    def _address(self, command: Sequence[Any], shard: str | None) -> str | KVStoreError:
-        """The primary to send ``command`` to: ``shard``'s, or found by routing it again."""
+    async def _exchange(self, address: str, commands: list[Sequence[Any]]) -> list[Any]:
+        """One pipeline to one node, with ``WAIT`` appended when writes need replicas."""
+        needed = self._wait_replicas
+        writes = [i for i, command in enumerate(commands) if not self._is_read(command)]
+        if not needed or not writes:
+            return await self.pool(address).pipeline(commands)
+        *replies, confirmed = await self.pool(address).pipeline(
+            [*commands, ["WAIT", needed, self._wait_timeout_ms]]
+        )
+        if isinstance(confirmed, int) and confirmed >= needed:
+            return replies
+        # Applied on the primary but not (yet) on enough replicas: report it,
+        # don't retry -- repeating a non-idempotent write would apply it twice.
+        reason = NotEnoughReplicasError(f"write reached {confirmed} of {needed} replicas")
+        return [reason if i in writes and not isinstance(r, KVStoreError) else r
+                for i, r in enumerate(replies)]  # fmt: skip
+
+    def _address(
+        self, command: Sequence[Any], shard: str | None, *, replica: bool = False
+    ) -> str | KVStoreError:
+        """Where to send ``command``: ``shard``'s primary (or a replica, for reads).
+
+        Without a shard, the command is routed again (after a failover or rebalance).
+        """
         if shard is None:
             try:
                 routed, _ = self._route(command)
@@ -298,9 +343,14 @@ class ShardRouter:
             assert routed.shard is not None
             shard = routed.shard
         try:
-            return self.primary(shard)
+            group = self.config.group(shard)
         except KeyError:
             return NodeUnavailableError(f"shard group {shard!r} left the cluster")
+        if replica:
+            healthy = [r for r in group.replicas if self.is_healthy is None or self.is_healthy(r)]
+            if healthy:
+                return healthy[next(self._replica_turn) % len(healthy)]
+        return group.primary
 
     @staticmethod
     def _is_read(command: Sequence[Any]) -> bool:

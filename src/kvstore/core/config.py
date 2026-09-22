@@ -73,6 +73,13 @@ class Settings(BaseSettings):
     shard_pool_size: int = Field(default=2, gt=0, description="Connections per node.")
     shard_retries: int = Field(default=3, ge=0, description="Retries of safe-to-repeat requests.")
     shard_retry_backoff_s: float = Field(default=0.05, gt=0)
+    wait_replicas: int = Field(
+        default=0, ge=0, description="Acknowledge a write only once this many replicas have it."
+    )
+    wait_timeout_s: float = Field(default=1.0, gt=0)
+    read_from_replicas: bool = Field(
+        default=False, description="Serve reads from replicas (they may lag the primary)."
+    )
     failover_enabled: bool = Field(default=True, description="Run the cluster manager.")
     heartbeat_interval_s: float = Field(default=0.5, gt=0)
     suspect_after_s: float = Field(default=1.0, gt=0)
