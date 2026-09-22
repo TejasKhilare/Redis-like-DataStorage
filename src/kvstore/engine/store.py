@@ -300,6 +300,17 @@ class Store:
         )
         return self.snapshot_job
 
+    def abandon_snapshot(self) -> bool:
+        """Drop a running snapshot unfinished (at shutdown); its ``on_done`` never runs.
+
+        Returns whether one was running.
+        """
+        job, self.snapshot_job = self.snapshot_job, None
+        if job is None:
+            return False
+        job.abandon()
+        return True
+
     def snapshot_barrier(self, key: str) -> None:
         """Copy ``key``'s current value into the running snapshot before it changes."""
         job = self.snapshot_job
@@ -423,6 +434,9 @@ class SnapshotJob:
     @property
     def remaining(self) -> int:
         return len(self._keys) - self._pos
+
+    def abandon(self) -> None:
+        self._keys, self._pos, self._on_done, self.records = [], 0, None, []
 
     def take(self, key: str, entry: Entry) -> None:
         entry.copied = self.epoch

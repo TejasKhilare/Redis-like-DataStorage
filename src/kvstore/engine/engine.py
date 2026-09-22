@@ -166,6 +166,12 @@ class Engine:
 
     def close(self) -> None:
         with self._lock:
+            if self.store.abandon_snapshot():
+                # Stopped mid-copy: nobody will take the result, and its
+                # completion would have released the GC (see begin_snapshot).
+                gcpolicy.release()
+                if self._persistence is not None:
+                    self._persistence.abandon_copy()
             if self._persistence is not None:
                 self._persistence.close()
             self._release_gc()
@@ -360,30 +366,50 @@ class Engine:
             persistence.check_writable()
             persistence.poll()  # finalize a finished job the cron hasn't picked up yet
             self._release_gc()
-            gcpolicy.hold()  # released when the rewrite finishes (see _poll_rewrite)
+            if persistence.rewrite_in_progress:
+                # Refused before taking a GC hold: taken twice with one flag to
+                # release it, the collector stayed frozen for good.
+                raise CommandError("Background append only file rewriting already in progress")
+            gcpolicy.hold()  # released once the rewrite is finalized (_release_gc)
             self._gc_held = True
-            if self.incremental_snapshots and self.store.snapshot_job is None:
-                persistence.begin_rewrite()
+            try:
+                if self.incremental_snapshots and self.store.snapshot_job is None:
+                    persistence.begin_rewrite()
 
-                def write(records: list[SnapshotRecord]) -> None:
-                    persistence.finish_copy(records, pause_ms=self._snapshot_pause_ms)
+                    def write(records: list[SnapshotRecord]) -> None:
+                        persistence.finish_copy(records, pause_ms=self._snapshot_pause_ms)
 
-                self.begin_snapshot(write)
-                return
-            started = time.perf_counter()
-            records = self.store.snapshot()
-            pause_ms = round((time.perf_counter() - started) * 1000, 3)
-            persistence.start_rewrite(records, pause_ms=pause_ms)
+                    self.begin_snapshot(write)
+                    return
+                started = time.perf_counter()
+                records = self.store.snapshot()
+                pause_ms = round((time.perf_counter() - started) * 1000, 3)
+                persistence.start_rewrite(records, pause_ms=pause_ms)
+            except BaseException:
+                self._release_gc()  # it never started: don't stay frozen
+                raise
 
     def begin_snapshot(self, on_done: Callable[[list[SnapshotRecord]], None]) -> None:
         """Start an incremental copy of the keyspace as of now; ``on_done`` gets it.
 
         :meth:`step_snapshot` advances it (the shard's cron loop calls it
-        between commands until it is done).
+        between commands until it is done). CPython's collector stays frozen
+        while it runs (ADR-0014): the hold is released when the copy completes,
+        whoever completes it, or when :meth:`close` abandons it.
         """
         with self._lock:
             started = time.perf_counter()
-            self.store.begin_snapshot(on_done)
+            gcpolicy.hold()
+
+            def done(records: list[SnapshotRecord]) -> None:
+                gcpolicy.release()
+                on_done(records)
+
+            try:
+                self.store.begin_snapshot(done)
+            except BaseException:
+                gcpolicy.release()
+                raise
             self._snapshot_pause_ms = round((time.perf_counter() - started) * 1000, 3)
 
     @property

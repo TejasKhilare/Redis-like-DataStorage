@@ -217,6 +217,14 @@ class Persistence:
         self._writer = new_writer
         self._copying = snapshot_name(generation)
 
+    def abandon_copy(self) -> None:
+        """The copy begun by :meth:`begin_rewrite` will never come (shutdown).
+
+        Nothing to undo: the manifest lists the previous files and the new
+        AOF, which recover everything -- the state a crash would leave.
+        """
+        self._copying = None
+
     def finish_copy(self, records: list[SnapshotRecord], *, pause_ms: float) -> None:
         """Step 2: write the copy to the snapshot file on a background thread."""
         snapshot, self._copying = self._copying, None

@@ -40,7 +40,6 @@ from kvstore.core.exceptions import (
 )
 from kvstore.engine import Engine
 from kvstore.engine.commands import COMMANDS
-from kvstore.observability import gcpolicy
 from kvstore.observability.metrics import CommandStats
 from kvstore.protocol.resp import OK, SimpleString
 from kvstore.protocol.tcp_server import Takeover
@@ -101,10 +100,8 @@ class ShardNode:
         future: asyncio.Future[list[SnapshotRecord]] = asyncio.get_running_loop().create_future()
         engine = self.engine
         if engine.incremental_snapshots and not engine.snapshot_in_progress:
-            gcpolicy.hold()  # no full GC scans of the keyspace while copying
 
             def done(records: list[SnapshotRecord]) -> None:
-                gcpolicy.release()
                 if not future.done():  # the replica may have gone meanwhile
                     future.set_result(records)
 

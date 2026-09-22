@@ -7,7 +7,19 @@ from pathlib import Path
 import pytest
 
 from kvstore.engine import Engine
+from kvstore.observability import gcpolicy
 from tests.helpers import FakeClock
+
+
+@pytest.fixture(autouse=True)
+def _no_frozen_gc_left_behind() -> Iterator[None]:
+    """Fail the test that leaves CPython's collector frozen, not whichever runs next.
+
+    A snapshot holds ``gc.freeze()`` until it finishes; one never finished or
+    released would keep cyclic garbage uncollected for the rest of the process.
+    """
+    yield
+    assert not gcpolicy.held(), "the collector is still frozen: a snapshot was not released"
 
 
 @pytest.fixture
