@@ -190,3 +190,24 @@ def test_save_finishes_the_copy_itself(data_dir: Path, clock: FakeClock) -> None
         assert not engine.snapshot_in_progress
         persistence = engine.persistence
         assert persistence is not None and persistence.stats().rewrites_completed == 1
+
+
+def test_info_reports_a_rewrite_while_its_copy_runs(data_dir: Path, clock: FakeClock) -> None:
+    """Pollers wait on aof_rewrite_in_progress: it must cover the copy, not just the write."""
+    engine = Engine(clock=clock, data_dir=data_dir, aof_fsync="no")
+    engine.open()
+    engine.incremental_snapshots = True
+    engine.snapshot_slice_keys = 10
+    engine.snapshot_slice_ms = 0  # one chunk per step
+    for i in range(100):
+        engine.execute("SET", f"k{i}", "v")
+    engine.start_rewrite()
+    assert engine.step_snapshot()  # still copying: nothing handed to the writer yet
+    assert "aof_rewrite_in_progress:1" in engine.execute("INFO", "persistence")
+    while engine.step_snapshot():
+        pass
+    persistence = engine.persistence
+    assert persistence is not None
+    persistence.wait_rewrite()
+    assert "aof_rewrite_in_progress:0" in engine.execute("INFO", "persistence")
+    engine.close()

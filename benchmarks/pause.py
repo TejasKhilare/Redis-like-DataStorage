@@ -32,6 +32,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from benchmarks.stallwatch import StallWatch
 from kvstore.engine import Engine
 from kvstore.engine.cron import run_cron
 
@@ -90,6 +91,7 @@ def measure(
     keys: int, kind: str = "string", *, reps: int = 3, value_size: int = 64
 ) -> dict[str, Any]:
     pauses, writes, stalls, stalls_inc, rewrites_inc = [], [], [], [], []
+    host_stalls: list[dict[str, Any]] = []  # the machine's, during the incremental runs
     with (
         tempfile.TemporaryDirectory(prefix="kvbench-pause-") as tmp,
         Engine(data_dir=Path(tmp), aof_fsync="no", aof_rewrite_percentage=0) as engine,
@@ -110,7 +112,9 @@ def measure(
             writes.append(stats.last_rewrite_duration_ms)
             stall, _ = asyncio.run(_stall_during_rewrite(engine, incremental=False))
             stalls.append(stall)
-            stall, whole = asyncio.run(_stall_during_rewrite(engine, incremental=True))
+            with StallWatch() as watch:
+                stall, whole = asyncio.run(_stall_during_rewrite(engine, incremental=True))
+            host_stalls.append(watch.summary())
             stalls_inc.append(stall)
             rewrites_inc.append(whole)
         size = persistence.stats().aof_base_size
@@ -126,6 +130,8 @@ def measure(
         "stall_ms_incremental": round(statistics.median(stalls_inc), 2),
         "stall_ms_incremental_max": round(max(stalls_inc), 2),
         "rewrite_ms_incremental": round(statistics.median(rewrites_inc), 1),
+        "stalls_ms_incremental": stalls_inc,
+        "host_stalls_incremental": host_stalls,
     }
 
 

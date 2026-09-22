@@ -363,7 +363,7 @@ class Persistence:
             aof_truncated_bytes=self.truncated_bytes,
             snapshot_keys_loaded=self.snapshot_keys_loaded,
             load_duration_ms=self.load_duration_ms,
-            rewrite_in_progress=self._job is not None,
+            rewrite_in_progress=self.rewrite_in_progress,  # the incremental copy counts
             rewrites_completed=self.rewrites_completed,
             rewrites_failed=self.rewrites_failed,
             last_rewrite_status=self.last_rewrite_status,
