@@ -14,6 +14,7 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, ExitStack
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -75,6 +76,10 @@ class _Process(AbstractContextManager["_Process"]):
             stderr=subprocess.STDOUT,
             preexec_fn=_file_size_limit(file_size_limit),
         )
+
+    @property
+    def pid(self) -> int:
+        return self._proc.pid
 
     def kill(self) -> None:
         """SIGKILL: no shutdown code runs, like a crash (``kill -9``)."""
@@ -174,9 +179,13 @@ class Deployment(AbstractContextManager["Deployment"]):
         self.dir = Path(tempfile.mkdtemp(prefix="kvbench-", dir=work_dir))
         self._stack.callback(_remove_tree, self.dir)
         self._nodes: dict[str, tuple[_Process, Callable[[], bool]]] = {}
+        self.endpoints: dict[str, Endpoint] = {}
 
     def kill(self, name: str) -> None:
         self._nodes[name][0].kill()
+
+    def pid(self, name: str) -> int:
+        return self._nodes[name][0].pid
 
     def stop(self, name: str) -> None:
         self._nodes[name][0].terminate()
@@ -232,7 +241,8 @@ class Deployment(AbstractContextManager["Deployment"]):
         ready = self._ready_fn(http_port, env.get("KV_REPLICAOF") is not None)
         self._nodes[name] = (proc, ready)
         _wait_until(ready, proc, name)
-        return Endpoint(resp_port, http_port)
+        self.endpoints[name] = Endpoint(resp_port, http_port)
+        return self.endpoints[name]
 
     @staticmethod
     def _ready_fn(http_port: int, replica: bool) -> Callable[[], bool]:
@@ -271,7 +281,9 @@ class Deployment(AbstractContextManager["Deployment"]):
         )
 
     # --------------------------------------------------------------- Redis
-    def redis(self, redis_server: str, *, fsync: str = "everysec") -> Endpoint:
+    def redis(
+        self, redis_server: str, *, fsync: str = "everysec", loglevel: str = "warning"
+    ) -> Endpoint:
         port = free_port()
         data = self.dir / "redis"
         data.mkdir()
@@ -284,10 +296,13 @@ class Deployment(AbstractContextManager["Deployment"]):
             "--appendonly", "yes",
             "--appendfsync", fsync,
             "--daemonize", "no",
-            "--loglevel", "warning",
+            "--loglevel", loglevel,
         ]  # fmt: skip
         proc = self._stack.enter_context(
             _Process("redis", argv, dict(os.environ), self.dir / "redis.log")
         )
-        _wait_until(lambda: _resp_ready(port), proc, "redis-server")
-        return Endpoint(port)
+        ready = partial(_resp_ready, port)  # PONG only once the data is loaded
+        self._nodes["redis"] = (proc, ready)
+        _wait_until(ready, proc, "redis-server")
+        self.endpoints["redis"] = Endpoint(port)
+        return self.endpoints["redis"]
