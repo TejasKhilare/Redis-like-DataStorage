@@ -192,8 +192,11 @@ class ClusterManager:
     def _client(self, address: str) -> KVClient:
         client = self._clients.get(address)
         if client is None:
-            # A heartbeat must fail fast: a hung node is as bad as a dead one.
-            timeout = max(0.05, min(self.heartbeat_interval_s, self.suspect_after_s / 2))
+            # A reply slower than the suspect threshold counts as no reply (a hung
+            # node is as bad as a dead one) -- but no sooner: tied to the heartbeat
+            # interval, a 100 ms latency spike made a healthy primary look dead
+            # and triggered a failover (found by tests/integration/test_chaos.py).
+            timeout = max(0.05, self.suspect_after_s)
             client = KVClient.from_address(address, timeout_s=timeout)
             self._clients[address] = client
         return client
