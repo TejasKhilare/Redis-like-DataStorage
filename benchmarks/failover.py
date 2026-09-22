@@ -10,6 +10,14 @@ write unique keys through the router the whole time, so every acknowledged
 write can be checked afterwards. Mid-run one primary is killed with SIGKILL
 and later restarted on the same address and data directory.
 
+The kill comes at a random point of the heartbeat cycle (a uniform delay
+of up to one interval, recorded per run). Detection takes the dead-after
+timeout minus the time since the last heartbeat, so a kill at a fixed time
+after start-up hits the same point of the cycle every run and the median
+reflects that one alignment. Before this was added, runs clustered: in
+Phase 4, four of five at 1.53-1.57 s in one mode and four of five at
+1.98-2.05 s in the other, with the same code.
+
 Reported per run:
 
 * **promotion**: kill -> the manager promoted the replica (detection + promotion);
@@ -27,6 +35,7 @@ import argparse
 import asyncio
 import itertools
 import json
+import random
 import statistics
 import sys
 import time
@@ -117,7 +126,8 @@ async def run_once(config: FailoverConfig) -> dict[str, Any]:
             asyncio.create_task(_writer(i, router, ring, log, stop)) for i in range(config.writers)
         ]
         started = time.monotonic()
-        await asyncio.sleep(config.before_s)
+        jitter = random.uniform(0, config.heartbeat_interval_s)  # see the module docstring
+        await asyncio.sleep(config.before_s + jitter)
         steady_ops = len(log.acked) / (time.monotonic() - started)
 
         deployment.kill(f"{victim}-primary")
@@ -156,6 +166,7 @@ async def run_once(config: FailoverConfig) -> dict[str, Any]:
     return {
         "config": {k: str(v) if isinstance(v, Path) else v for k, v in asdict(config).items()},
         "steady_ops_per_sec": round(steady_ops, 1),
+        "kill_jitter_s": round(jitter, 3),
         "acked_writes": len(log.acked),
         "promotion_s": round(event["promoted_at"] - killed_wall, 3) if event else None,
         "detected_after_s": event["detected_after_s"] if event else None,
