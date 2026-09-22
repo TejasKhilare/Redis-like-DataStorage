@@ -6,7 +6,7 @@ import os
 import random
 import threading
 import time
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +26,8 @@ from kvstore.engine.entry import Clock
 from kvstore.engine.eviction import create_eviction_policy
 from kvstore.engine.persistence import FsyncPolicy, Persistence, PersistenceStats
 from kvstore.engine.store import Store
+from kvstore.observability import gcpolicy
+from kvstore.protocol.resp import encode_command
 
 _REDIS_POLICY_NAMES = {
     "lru": "allkeys-lru",
@@ -38,8 +40,12 @@ _REDIS_POLICY_NAMES = {
 class ReplicationFeed(Protocol):
     """Where the effects of writes go besides the AOF: the node's replication stream."""
 
-    def feed(self, command: str, args: Sequence[Any]) -> None:
-        """Record one effect (same as an AOF record)."""
+    @property
+    def active(self) -> bool:
+        """Whether anything is being fed (no replica ever connected: skip the encoding)."""
+
+    def feed(self, payload: bytes) -> None:
+        """Record one effect, RESP-encoded (the same bytes as the AOF record's payload)."""
 
     def flush(self) -> None:
         """Called at every commit: send what was fed to the replicas."""
@@ -262,10 +268,16 @@ class Engine:
     def propagate(self, command: str, *args: Any) -> None:
         if self._replaying:
             return
-        if self._persistence is not None and self._persistence.is_open:
-            self._persistence.append(command, args)
-        if self.replication is not None:
-            self.replication.feed(command, args)
+        persistence = self._persistence if self._persistence and self._persistence.is_open else None
+        replication = self.replication if self.replication and self.replication.active else None
+        if persistence is None and replication is None:
+            return
+        # Encoded once, for the AOF and for the replicas alike.
+        payload = encode_command([command, *args])
+        if persistence is not None:
+            persistence.append(payload)
+        if replication is not None:
+            replication.feed(payload)
 
     def _expired(self, key: str) -> None:
         # An expiry is a write like any other: logged, and sent to replicas,

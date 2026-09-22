@@ -21,7 +21,7 @@ from kvstore.core.exceptions import (
 from kvstore.engine import Engine
 from kvstore.engine.persistence import aof as aof_module
 from kvstore.engine.persistence import manager as manager_module
-from kvstore.engine.persistence.aof import decode_record, encode_record
+from kvstore.engine.persistence.aof import decode_record, encode_record, iter_records
 from kvstore.engine.persistence.manifest import Manifest
 from tests.helpers import FakeClock, dump
 
@@ -38,17 +38,48 @@ def aof_records(data_dir: Path) -> list[list[Any]]:
     assert manifest is not None
     records = []
     for name in manifest.aofs:
-        for line in (data_dir / name).read_bytes().splitlines(keepends=True):
-            command, args = decode_record(line)
+        for command, args in iter_records(data_dir / name):
             records.append([command, *args])
     return records
 
 
 # ------------------------------------------------------------ record format
 def test_record_round_trip_with_crc() -> None:
-    line = encode_record("SET", ["k", "v with ünicode"])
-    assert line[8:9] == b" " and line.endswith(b"\n")
-    assert decode_record(line) == ("SET", ["k", "v with ünicode"])
+    record = encode_record("SET", ["k", "v with ünicode"])
+    header, payload = record.split(b"\n", 1)
+    assert header.startswith(b"#")
+    assert int(header.split()[1]) == len(payload)
+    assert payload.startswith(b"*3\r\n$3\r\nSET\r\n")  # the RESP the replicas get too
+    assert decode_record(record) == ("SET", ["k", "v with ünicode"])
+
+
+@pytest.mark.parametrize(
+    ("record", "message"),
+    [
+        (b"#zzzz 5\n*1\r\n", "malformed record header"),
+        (b"#00000000 99\n*1\r\n$4\r\nPING\r\n", "incomplete record"),
+        (b"#deadbeef 14\n*1\r\n$4\r\nPING\r\n", "checksum mismatch"),
+        (b"#00000000", "incomplete record"),
+    ],
+)
+def test_bad_v3_records(record: bytes, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        decode_record(record)
+
+
+def test_a_v2_aof_keeps_loading_and_continues_in_v3(data_dir: Path, clock: FakeClock) -> None:
+    """Upgrading from 0.3: the current AOF holds v2 lines; new writes append v3 records."""
+    import zlib
+
+    data_dir.mkdir(parents=True)
+    payload = b'["SET","old","v2"]'
+    (data_dir / "appendonly-1.aof").write_bytes(b"%08x %s\n" % (zlib.crc32(payload), payload))
+    with Engine(clock=clock, data_dir=data_dir, aof_fsync="no") as engine:
+        assert engine.execute("GET", "old") == "v2"
+        engine.execute("SET", "new", "v3")
+    assert aof_records(data_dir) == [["SET", "old", "v2"], ["SET", "new", "v3"]]
+    with Engine(clock=clock, data_dir=data_dir, aof_fsync="no") as engine:
+        assert engine.execute("MGET", "old", "new") == ["v2", "v3"]
 
 
 @pytest.mark.parametrize(
@@ -113,7 +144,7 @@ def test_only_effects_are_logged(durable_engine: Engine, data_dir: Path, clock: 
     deadline = int(clock.now * 1000) + 60_000
     assert records == [
         ["SET", "a", "1"],
-        ["PEXPIREAT", "a", deadline],
+        ["PEXPIREAT", "a", str(deadline)],  # RESP: text, as it arrives over the network
         ["SADD", "s", "x", "y"],
         ["SREM", "s", popped],  # SPOP is random: logged as the member removed
         ["SET", "f", "1.5", "KEEPTTL"],

@@ -29,7 +29,6 @@ from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from kvstore.core.codec import SnapshotRecord
 from kvstore.core.exceptions import CommandError, PersistenceWriteError
@@ -146,10 +145,11 @@ class Persistence:
         self._delete_unreferenced()
 
     # ------------------------------------------------------------- writes
-    def append(self, command: str, args: tuple[Any, ...] | list[Any]) -> None:
+    def append(self, payload: bytes) -> None:
+        """One command, already RESP-encoded."""
         assert self._writer is not None
         try:
-            self._writer.append(command, args)
+            self._writer.append(payload)
         except OSError as exc:
             self._fail(exc)
 

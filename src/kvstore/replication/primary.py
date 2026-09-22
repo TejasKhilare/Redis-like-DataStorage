@@ -22,7 +22,7 @@ import asyncio
 import itertools
 import logging
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -113,9 +113,13 @@ class PrimaryReplication:
         self.partial_resyncs = 0
 
     # ----------------------------------------------------------- feeding
-    def feed(self, command: str, args: Sequence[Any]) -> None:
+    def feed(self, payload: bytes) -> None:
+        """One command, already RESP-encoded (by the engine, once for the AOF too)."""
         if self.active:
-            self.state.backlog.append(encode_command([command, *args]))
+            self.state.backlog.append(payload)
+
+    def _feed_command(self, *args: Any) -> None:
+        self.feed(encode_command(args))
 
     def flush(self) -> None:
         for replica in list(self.replicas.values()):
@@ -125,7 +129,7 @@ class PrimaryReplication:
     def ping(self) -> None:
         """Keep idle links alive (it counts in the stream, as in Redis)."""
         if self.replicas:
-            self.feed("PING", ())
+            self._feed_command("PING")
             self.flush()
 
     def _send(self, replica: ConnectedReplica) -> None:
@@ -231,7 +235,7 @@ class PrimaryReplication:
         future: asyncio.Future[int] = asyncio.get_running_loop().create_future()
         waiter = _Waiter(target, needed, future)
         self._waiters.append(waiter)
-        self.feed("REPLCONF", ("GETACK", "*"))  # ask for acks now, not in up to a second
+        self._feed_command("REPLCONF", "GETACK", "*")  # ask for acks now, not in up to a second
         self.flush()
         try:
             return await asyncio.wait_for(future, timeout_s) if timeout_s > 0 else await future

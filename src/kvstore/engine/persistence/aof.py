@@ -1,13 +1,19 @@
 """Append-only file.
 
-Record format (v2), one per line::
+Record format (v3): a header line, then the command as a RESP array::
 
-    <crc32 as 8 hex digits> <JSON array: [command, *args]>\\n
-    3a5f9b1c ["SET","user:1","tejas"]
+    #<crc32 of the payload, 8 hex digits> <payload length>\\n
+    *3\\r\\n$3\\r\\nSET\\r\\n$6\\r\\nuser:1\\r\\n$5\\r\\ntejas\\r\\n
 
-The CRC catches corruption anywhere in the file, not just a torn tail. v1
-records (``{"command": ..., "args": [...]}``, written by kvstore 0.1/0.2)
-are still read, so old data directories keep working.
+The payload is exactly what the replication stream carries, so a write is
+encoded once for both -- and RESP is cheaper to produce than JSON. The CRC
+catches corruption anywhere in the file, not just a torn tail.
+
+Older records are still read, one by one, so a data directory keeps working
+across upgrades, even an AOF that continues in v3 after v2 lines:
+
+* v2 (kvstore 0.3): ``<crc32 8 hex> <JSON array: [command, *args]>\\n``;
+* v1 (kvstore 0.1/0.2): ``{"command": ..., "args": [...]}``.
 
 The log holds the *effect* of each command (see ADR-0003), recorded after
 the command ran in memory and committed before its reply is sent.
@@ -34,7 +40,8 @@ import os
 import threading
 import time
 import zlib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -56,11 +63,19 @@ class ReplayResult:
 
 
 def encode_record(command: str, args: Sequence[Any]) -> bytes:
-    payload = json.dumps([command, *args], separators=(",", ":")).encode()
-    return b"%08x %s\n" % (zlib.crc32(payload), payload)
+    """A whole v3 record for one command."""
+    return frame_record(encode_command([command, *args]))
+
+
+def frame_record(payload: bytes) -> bytes:
+    """A v3 record around an already RESP-encoded command."""
+    return b"#%08x %d\n%s" % (zlib.crc32(payload), len(payload), payload)
 
 
 def decode_record(raw: bytes) -> tuple[str, list[Any]]:
+    """Decode one record of any version (v3: the header line and its payload)."""
+    if raw.startswith(b"#"):
+        return _decode_v3(raw)
     if not raw.endswith(b"\n"):
         raise ValueError("incomplete record")
     if raw.startswith(b"{"):
@@ -78,6 +93,33 @@ def decode_record(raw: bytes) -> tuple[str, list[Any]]:
     if not isinstance(record, list) or not record or not isinstance(record[0], str):
         raise ValueError("record must be a non-empty array starting with the command")
     return record[0], record[1:]
+
+
+def _v3_header(line: bytes) -> tuple[int, int]:
+    """``(crc, payload length)`` from a v3 header line."""
+    try:
+        crc, length = line[1:].split()
+        return int(crc, 16), int(length)
+    except ValueError:
+        raise ValueError("malformed record header") from None
+
+
+def _decode_v3(raw: bytes) -> tuple[str, list[Any]]:
+    eol = raw.find(b"\n")
+    if eol < 0:
+        raise ValueError("incomplete record")
+    expected, length = _v3_header(raw[:eol])
+    payload = raw[eol + 1 :]
+    if len(payload) != length:
+        raise ValueError("incomplete record")
+    if zlib.crc32(payload) != expected:
+        raise ValueError("checksum mismatch")
+    parser = RequestParser()
+    parser.feed(payload)
+    command = parser.next_command()
+    if not command:
+        raise ValueError("record is not a RESP command")
+    return command[0], command[1:]
 
 
 def _decode_v1(raw: bytes) -> tuple[str, list[Any]]:
@@ -119,8 +161,9 @@ class AOFWriter:
     def size_bytes(self) -> int:
         return self._file.tell()
 
-    def append(self, command: str, args: Sequence[Any]) -> None:
-        self._file.write(encode_record(command, args))
+    def append(self, payload: bytes) -> None:
+        """Buffer one command, already RESP-encoded."""
+        self._file.write(frame_record(payload))
         self._dirty = True
 
     def commit(self) -> None:
@@ -185,6 +228,9 @@ def replay_aof(path: Path, apply: ApplyFn, *, allow_truncate: bool = True) -> Re
             if not raw.strip():
                 good_offset = f.tell()
                 continue
+            if raw.startswith(b"#"):  # v3: the payload follows the header line
+                with suppress(ValueError):  # a bad header is reported by decode_record
+                    raw += f.read(_v3_header(raw.rstrip(b"\n"))[1])
             try:
                 command, args = decode_record(raw)
             except ValueError as exc:
@@ -206,3 +252,14 @@ def replay_aof(path: Path, apply: ApplyFn, *, allow_truncate: bool = True) -> Re
         )
         os.truncate(path, good_offset)
     return ReplayResult(records=records, truncated_bytes=truncated)
+
+
+def iter_records(path: Path) -> Iterator[tuple[str, list[Any]]]:
+    """Every record in an AOF, any version (for tools and tests; replay has its own loop)."""
+    with path.open("rb") as f:
+        while raw := f.readline():
+            if not raw.strip():
+                continue
+            if raw.startswith(b"#"):
+                raw += f.read(_v3_header(raw.rstrip(b"\n"))[1])
+            yield decode_record(raw)
