@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: kvstore
+    folder: kvstore
+    type: file
+    allowUiUpdates: true # edit in the UI, then export over dashboards/kvstore.json
+    options:
+      path: /var/lib/grafana/dashboards

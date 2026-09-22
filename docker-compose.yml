@@ -1,41 +1,65 @@
-# Three shards behind one router:  docker compose up --build
+# Three shard groups (a primary and a replica each) behind one router, with
+# Prometheus and Grafana:  docker compose up --build
 #   REST API + docs  http://localhost:8000/docs
 #   TCP data plane   localhost:7000   (python -m kvstore.cli --port 7000)
+#   Grafana          http://localhost:3000   (dashboard "kvstore"; admin/admin)
+#   Prometheus       http://localhost:9090
+#
+# Fail a primary and watch the dashboard:
+#   docker compose kill shard-1     its replica is promoted within ~2 s
+#   docker compose start shard-1    it rejoins, as a replica of the new primary
 
-x-shard: &shard
+x-node: &node
   build: .
   image: kvstore:dev
   restart: unless-stopped
-  environment: &shard-env
-    KV_NODE_ROLE: shard
-    KV_TCP_PORT: "6379"
-    KV_HTTP_PORT: "8000"
+
+x-shard-env: &shard-env
+  KV_NODE_ROLE: shard
+  KV_TCP_PORT: "6379"
+  KV_HTTP_PORT: "8000"
 
 services:
   shard-1:
-    <<: *shard
+    <<: *node
     environment: { <<: *shard-env, KV_NODE_ID: shard-1 }
     volumes: [shard-1-data:/data]
+  shard-1-replica:
+    <<: *node
+    environment: { <<: *shard-env, KV_NODE_ID: shard-1-replica, KV_REPLICAOF: "shard-1:6379" }
+    volumes: [shard-1-replica-data:/data]
 
   shard-2:
-    <<: *shard
+    <<: *node
     environment: { <<: *shard-env, KV_NODE_ID: shard-2 }
     volumes: [shard-2-data:/data]
+  shard-2-replica:
+    <<: *node
+    environment: { <<: *shard-env, KV_NODE_ID: shard-2-replica, KV_REPLICAOF: "shard-2:6379" }
+    volumes: [shard-2-replica-data:/data]
 
   shard-3:
-    <<: *shard
+    <<: *node
     environment: { <<: *shard-env, KV_NODE_ID: shard-3 }
     volumes: [shard-3-data:/data]
+  shard-3-replica:
+    <<: *node
+    environment: { <<: *shard-env, KV_NODE_ID: shard-3-replica, KV_REPLICAOF: "shard-3:6379" }
+    volumes: [shard-3-replica-data:/data]
 
   router:
-    image: kvstore:dev
-    restart: unless-stopped
+    <<: *node
     environment:
       KV_NODE_ROLE: router
       KV_NODE_ID: router
       KV_TCP_PORT: "7000"
       KV_HTTP_PORT: "8000"
-      KV_SHARDS: shard-1:6379,shard-2:6379,shard-3:6379
+      # Group ids as before replicas were added, so keys map to the same groups.
+      KV_SHARDS: >-
+        shard-1=shard-1:6379+shard-1-replica:6379,
+        shard-2=shard-2:6379+shard-2-replica:6379,
+        shard-3=shard-3:6379+shard-3-replica:6379
+    volumes: [router-data:/data] # the cluster config, epoch and failovers included
     ports:
       - "8000:8000"
       - "7000:7000"
@@ -44,7 +68,33 @@ services:
       shard-2: { condition: service_healthy }
       shard-3: { condition: service_healthy }
 
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    restart: unless-stopped
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true" # view without logging in
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/kvstore.json
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+
 volumes:
   shard-1-data:
+  shard-1-replica-data:
   shard-2-data:
+  shard-2-replica-data:
   shard-3-data:
+  shard-3-replica-data:
+  router-data:
+  prometheus-data:

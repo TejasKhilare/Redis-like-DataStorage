@@ -1,0 +1,25 @@
+# Scrapes GET /metrics on every node of docker-compose.yml.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: kvstore-shards
+    static_configs:
+      - targets:
+          - shard-1:8000
+          - shard-1-replica:8000
+          - shard-2:8000
+          - shard-2-replica:8000
+          - shard-3:8000
+          - shard-3-replica:8000
+    relabel_configs: &instance-is-host
+      # instance="shard-1" rather than "shard-1:8000": every node uses port 8000.
+      - source_labels: [__address__]
+        regex: "([^:]+):\\d+"
+        target_label: instance
+
+  - job_name: kvstore-router
+    static_configs:
+      - targets: [router:8000]
+    relabel_configs: *instance-is-host
