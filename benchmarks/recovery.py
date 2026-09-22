@@ -64,15 +64,22 @@ def _admin(endpoint: Endpoint) -> dict[str, Any]:
     return persistence
 
 
-async def _rewrite(endpoint: Endpoint) -> None:
-    async with KVClient(endpoint.host, endpoint.resp_port, timeout_s=10) as client:
+async def _rewrite(endpoint: Endpoint) -> float:
+    """Start a rewrite and wait for it; returns how long the command took to answer (ms).
+
+    It should answer at once -- the work is in the background -- so a slow
+    reply means the event loop was blocked, and every client with it.
+    """
+    async with KVClient(endpoint.host, endpoint.resp_port, timeout_s=300) as client:
+        started = time.perf_counter()
         await client.execute("BGREWRITEAOF")
+        reply_ms = (time.perf_counter() - started) * 1000
     await asyncio.sleep(0.5)
     while True:
         info = await _info(endpoint, "persistence")
         scheduled = info.get("aof_rewrite_scheduled", "0")  # Redis only
         if info["aof_rewrite_in_progress"] == "0" and scheduled == "0":
-            return
+            return round(reply_ms, 1)
         await asyncio.sleep(0.2)
 
 
@@ -101,8 +108,7 @@ def kvstore_case(
     with Deployment(work_dir) as deployment:
         node = deployment.kvstore_node("node", env={"KV_AOF_REWRITE_PERCENTAGE": "0"})
         asyncio.run(_fill(node, writes, keys))
-        if snapshot:
-            asyncio.run(_rewrite(node))
+        reply_ms = asyncio.run(_rewrite(node)) if snapshot else None
 
         def probe() -> dict[str, Any]:
             p = _admin(node)
@@ -119,6 +125,7 @@ def kvstore_case(
     return {
         **runs[-1],
         "load_ms": round(statistics.median(r["load_ms"] for r in runs), 1),
+        "bgrewriteaof_reply_ms": reply_ms,
         **result,
     }
 
@@ -145,8 +152,7 @@ def redis_case(
     with Deployment(work_dir) as deployment:
         node = deployment.redis(redis_server, loglevel="notice")  # notice logs the load time
         asyncio.run(_fill(node, writes, keys))
-        if snapshot:
-            asyncio.run(_rewrite(node))
+        reply_ms = asyncio.run(_rewrite(node)) if snapshot else None
 
         def probe() -> dict[str, Any]:
             info = asyncio.run(_info(node, "persistence"))
@@ -162,7 +168,8 @@ def redis_case(
         result = _restarts(deployment, "redis", probe)
     runs = result.pop("runs")
     loads = [r["load_ms"] for r in runs if r["load_ms"] is not None]
-    return {**runs[-1], "load_ms": round(statistics.median(loads), 1) if loads else None, **result}
+    load_ms = round(statistics.median(loads), 1) if loads else None
+    return {**runs[-1], "load_ms": load_ms, "bgrewriteaof_reply_ms": reply_ms, **result}
 
 
 def run(
