@@ -1,10 +1,12 @@
 """AOF, snapshots, manifest-based rewrites, fsync policies and crash recovery."""
 
 import contextlib
+import errno
 import json
 import random
 import shutil
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -590,4 +592,51 @@ def test_background_fsync_failure_surfaces_on_next_commit(data_dir: Path, clock:
     engine.persistence._writer.background_error = OSError("I/O error")
     with pytest.raises(PersistenceWriteError, match="I/O error"):
         engine.execute("SET", "a", "1")
+    engine.close()
+
+
+def test_a_slow_last_fsync_of_the_old_aof_does_not_hold_up_a_rewrite(
+    data_dir: Path, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Switching AOF generations doesn't wait for the old file's final fsync."""
+    engine = open_engine(data_dir, clock)
+    for i in range(100):
+        engine.execute("SET", f"k{i}", "v")
+    real_fsync = aof_module.AOFWriter._fsync
+
+    def slow_fsync(self: aof_module.AOFWriter) -> None:
+        time.sleep(0.5)  # a burst of unsynced writes on a busy disk
+        real_fsync(self)
+
+    monkeypatch.setattr(aof_module.AOFWriter, "_fsync", slow_fsync)
+    started = time.perf_counter()
+    engine.start_rewrite()
+    assert time.perf_counter() - started < 0.25
+    engine.execute("SET", "after", "switch")  # into the new generation meanwhile
+    engine.close()  # waits for the old file's close and for the snapshot
+
+    reopened = open_engine(data_dir, clock)
+    assert reopened.execute("DBSIZE") == 101
+    assert reopened.execute("GET", "after") == "switch"
+    reopened.close()
+
+
+def test_a_failed_close_of_the_old_aof_refuses_writes(
+    data_dir: Path, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = open_engine(data_dir, clock)
+    engine.execute("SET", "a", "1")
+
+    def broken_fsync(self: aof_module.AOFWriter) -> None:
+        raise OSError(errno.EIO, "Input/output error")
+
+    monkeypatch.setattr(aof_module.AOFWriter, "_fsync", broken_fsync)
+    engine.start_rewrite()
+    assert engine.persistence is not None
+    engine.persistence._join_closing()
+    with pytest.raises(PersistenceWriteError, match="Input/output error"):
+        engine.execute("SET", "b", "2")  # the old file's writes may not be durable
+    with pytest.raises(PersistenceWriteError, match="Errors writing to the AOF"):
+        engine.execute("SET", "c", "3")  # MISCONF from then on
+    assert engine.execute("GET", "a") == "1"  # reads still work
     engine.close()

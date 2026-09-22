@@ -95,9 +95,10 @@ class Persistence:
         self._writer: AOFWriter | None = None
         self._job: _RewriteJob | None = None
         self._copying: str | None = None  # AOF switched; the keyspace is still being copied
+        self._closing: threading.Thread | None = None  # the previous AOF's final fsync
         self.write_error: str | None = None
         # stats
-        self.fsync_seconds = Histogram()  # across AOF generations
+        self.fsync_seconds = Histogram(locked=True)  # every generation's fsync threads
         self.base_size = 0
         self.records_loaded = 0
         self.truncated_bytes = 0
@@ -207,15 +208,40 @@ class Persistence:
         if self._job is not None or self._copying is not None:
             raise CommandError("Background append only file rewriting already in progress")
         assert self._writer is not None
+        self._join_closing()
         generation = generation_of(self._manifest.aofs[-1]) + 1
         new_aof = aof_name(generation)
 
-        self._writer.close()  # flush + fsync the old generation
+        old = self._writer
+        old.commit()  # hand its buffer to the OS; its fsync can wait (below)
         new_writer = AOFWriter(self.data_dir / new_aof, self.fsync, self.fsync_seconds)
         self._manifest = Manifest(self._manifest.snapshot, [*self._manifest.aofs, new_aof])
         self._manifest.save(self.data_dir)
         self._writer = new_writer
         self._copying = snapshot_name(generation)
+        # The old generation's last fsync may have a whole burst of writes to
+        # flush: on the benchmark machine a BGREWRITEAOF right after 500k
+        # writes didn't answer for over 10 s, every client waiting. It runs on
+        # a thread instead. Until it is done those writes are exactly as
+        # durable as the fsync policy already promised (under `always` there
+        # is nothing left to sync); a failure refuses writes from then on.
+        self._closing = threading.Thread(
+            target=self._close_previous, args=(old, new_writer), name="aof-close", daemon=True
+        )
+        self._closing.start()
+
+    @staticmethod
+    def _close_previous(old: AOFWriter, successor: AOFWriter) -> None:
+        try:
+            old.close()
+        except OSError as exc:
+            logger.error("closing the previous AOF failed", extra={"error": str(exc)})
+            successor.background_error = exc  # MISCONF from the next commit on
+
+    def _join_closing(self) -> None:
+        if self._closing is not None:
+            self._closing.join()
+            self._closing = None
 
     def abandon_copy(self) -> None:
         """The copy begun by :meth:`begin_rewrite` will never come (shutdown).
@@ -249,10 +275,13 @@ class Persistence:
         """Finish a completed background rewrite. Returns True if one finished."""
         if self._job is None or not self._job.future.done():
             return False
+        if self._closing is not None and self._closing.is_alive():
+            return False  # the old AOF is still being closed; its file can't go yet
         self._finish()
         return True
 
     def wait_rewrite(self) -> None:
+        self._join_closing()
         if self._job is not None:
             self._job.future.exception()  # blocks until done
             self._finish()
@@ -312,6 +341,7 @@ class Persistence:
     # ----------------------------------------------------------- shutdown
     def close(self) -> None:
         self.wait_rewrite()
+        self._join_closing()  # a copy abandoned at shutdown leaves no job to wait for
         if self._writer is not None:
             try:
                 self._writer.close()
