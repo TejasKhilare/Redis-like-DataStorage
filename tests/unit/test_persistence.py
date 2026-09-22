@@ -329,6 +329,7 @@ def test_rewrite_compacts_to_snapshot_plus_new_aof(
     assert dump(engine) == before
     stats = engine.info().persistence
     assert stats is not None and stats.snapshot_keys_loaded == 4
+    assert stats.aof_records_loaded == 1 and stats.load_duration_ms > 0
     engine.close()
 
 

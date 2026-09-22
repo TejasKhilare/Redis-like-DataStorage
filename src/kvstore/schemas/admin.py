@@ -14,6 +14,7 @@ class PersistenceSchema(BaseModel):
     aof_records_loaded: int
     aof_truncated_bytes: int
     snapshot_keys_loaded: int
+    load_duration_ms: float
     rewrite_in_progress: bool
     rewrites_completed: int
     rewrites_failed: int

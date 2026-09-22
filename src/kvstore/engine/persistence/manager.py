@@ -58,6 +58,7 @@ class PersistenceStats:
     aof_records_loaded: int
     aof_truncated_bytes: int
     snapshot_keys_loaded: int
+    load_duration_ms: float
     rewrite_in_progress: bool
     rewrites_completed: int
     rewrites_failed: int
@@ -101,6 +102,7 @@ class Persistence:
         self.records_loaded = 0
         self.truncated_bytes = 0
         self.snapshot_keys_loaded = 0
+        self.load_duration_ms = 0.0
         self.rewrites_completed = 0
         self.rewrites_failed = 0
         self.last_rewrite_status = "ok"
@@ -119,6 +121,7 @@ class Persistence:
     # ------------------------------------------------------------ startup
     def load(self, load_record: Callable[[SnapshotRecord], None], apply: ApplyFn) -> None:
         """Rebuild state from disk, then open the current AOF for appending."""
+        started = time.perf_counter()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         manifest = Manifest.load(self.data_dir)
         if manifest is None:
@@ -144,6 +147,7 @@ class Persistence:
 
         self._writer = AOFWriter(self.data_dir / manifest.aofs[-1], self.fsync, self.fsync_seconds)
         self._delete_unreferenced()
+        self.load_duration_ms = round((time.perf_counter() - started) * 1000, 3)
 
     # ------------------------------------------------------------- writes
     def append(self, payload: bytes) -> None:
@@ -320,6 +324,7 @@ class Persistence:
             aof_records_loaded=self.records_loaded,
             aof_truncated_bytes=self.truncated_bytes,
             snapshot_keys_loaded=self.snapshot_keys_loaded,
+            load_duration_ms=self.load_duration_ms,
             rewrite_in_progress=self._job is not None,
             rewrites_completed=self.rewrites_completed,
             rewrites_failed=self.rewrites_failed,

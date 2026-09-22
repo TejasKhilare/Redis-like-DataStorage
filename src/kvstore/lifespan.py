@@ -131,6 +131,7 @@ async def shard_lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "aof_records_loaded": info.persistence.aof_records_loaded
                 if info.persistence
                 else 0,
+                "load_ms": info.persistence.load_duration_ms if info.persistence else 0,
             },
         )
         yield

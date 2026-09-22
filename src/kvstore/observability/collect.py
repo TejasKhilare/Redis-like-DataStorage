@@ -92,6 +92,9 @@ def shard_metrics(
                   [({}, int(p.rewrite_in_progress))])  # fmt: skip
         out.gauge("kvstore_aof_write_error", "1 if an AOF write failed (writes refused).",
                   [({}, int(p.write_error is not None))])  # fmt: skip
+        out.gauge("kvstore_load_duration_seconds",
+                  "Time startup spent loading the snapshot and replaying the AOF.",
+                  [({}, p.load_duration_ms / 1000)])  # fmt: skip
         if p.last_snapshot_pause_ms is not None:
             out.gauge("kvstore_snapshot_pause_seconds",
                       "Event-loop pause of the last snapshot copy.",
