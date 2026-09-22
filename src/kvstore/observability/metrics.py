@@ -68,15 +68,21 @@ class Histogram:
 
 @dataclass(slots=True)
 class CommandStats:
-    """Per-command counts, errors and latency (Redis's ``INFO commandstats``, plus a histogram)."""
+    """Per-command counts, errors and latency (Redis's ``INFO commandstats``, plus a histogram).
+
+    A command's call count is its histogram's count: one structure updated
+    per call on the hot path, the counts read out when scraped.
+    """
 
     enabled: bool = True
-    calls: dict[str, int] = field(default_factory=dict)
     errors: dict[tuple[str, str], int] = field(default_factory=dict)
     latency: dict[str, Histogram] = field(default_factory=dict)
 
+    @property
+    def calls(self) -> dict[str, int]:
+        return {command: histogram.count for command, histogram in self.latency.items()}
+
     def record(self, command: str, seconds: float) -> None:
-        self.calls[command] = self.calls.get(command, 0) + 1
         histogram = self.latency.get(command)
         if histogram is None:
             histogram = self.latency[command] = Histogram()

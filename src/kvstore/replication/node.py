@@ -53,6 +53,12 @@ Role = Literal["primary", "replica"]
 _STATE_FILE = "node.json"
 # Answered here rather than by the engine (for metric labels).
 _NODE_COMMANDS = frozenset({"PSYNC", "REPLCONF", "REPLICAOF", "SLAVEOF", "ROLE", "WAIT", "CLUSTER"})
+# A command's metrics label, for its usual spellings: one dict lookup per command.
+_LABELS: dict[str, str] = {
+    spelling: name.lower()
+    for name in (*COMMANDS, *_NODE_COMMANDS)
+    for spelling in (name, name.lower())
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,18 +144,21 @@ class ShardNode:
 
     # ------------------------------------------------------------- commands
     def execute(self, command: str, *args: Any) -> Any:
-        if not self.stats.enabled:
+        stats = self.stats
+        if not stats.enabled:
             return self._execute(command, args)
-        name = command.upper() if isinstance(command, str) else ""
-        label = name.lower() if name in COMMANDS or name in _NODE_COMMANDS else "unknown"
+        label = _LABELS.get(command)
+        if label is None:  # another spelling, or not a command at all
+            upper = command.upper() if isinstance(command, str) else ""
+            label = _LABELS.get(upper, "unknown")
         started = time.perf_counter()
         try:
             return self._execute(command, args)
         except KVStoreError as exc:
-            self.stats.error(label, exc.prefix)
+            stats.error(label, exc.prefix)
             raise
         finally:
-            self.stats.record(label, time.perf_counter() - started)
+            stats.record(label, time.perf_counter() - started)
 
     def _execute(self, command: str, args: tuple[Any, ...]) -> Any:
         name = command.upper() if isinstance(command, str) else ""
