@@ -11,7 +11,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager, ExitStack
 from dataclasses import dataclass
 from functools import partial
@@ -282,7 +282,12 @@ class Deployment(AbstractContextManager["Deployment"]):
 
     # --------------------------------------------------------------- Redis
     def redis(
-        self, redis_server: str, *, fsync: str = "everysec", loglevel: str = "warning"
+        self,
+        redis_server: str,
+        *,
+        fsync: str = "everysec",
+        loglevel: str = "warning",
+        extra_args: Sequence[str] = (),
     ) -> Endpoint:
         port = free_port()
         data = self.dir / "redis"
@@ -297,6 +302,7 @@ class Deployment(AbstractContextManager["Deployment"]):
             "--appendfsync", fsync,
             "--daemonize", "no",
             "--loglevel", loglevel,
+            *extra_args,
         ]  # fmt: skip
         proc = self._stack.enter_context(
             _Process("redis", argv, dict(os.environ), self.dir / "redis.log")

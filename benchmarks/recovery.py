@@ -17,6 +17,7 @@ reading the files and rebuilding the keyspace), and spawn-to-ready (process
 start, imports, load, listeners -- what a restart costs a client; polled
 every 0.1 s). With ``--redis-server``, Redis 7 does the same (its AOF, and
 its RDB-preamble base after a rewrite); its load time is the one it logs.
+Automatic rewrites are off on both, so the AOF cases replay the whole log.
 """
 
 from __future__ import annotations
@@ -150,7 +151,13 @@ def redis_case(
     work_dir: Path | None, redis_server: str, writes: int, keys: int, *, snapshot: bool
 ) -> dict[str, Any]:
     with Deployment(work_dir) as deployment:
-        node = deployment.redis(redis_server, loglevel="notice")  # notice logs the load time
+        node = deployment.redis(
+            redis_server,
+            loglevel="notice",  # it logs the load time
+            # Like the kvstore node: past 64 MB of AOF Redis would rewrite on its
+            # own, and then load a compacted base instead of replaying its log.
+            extra_args=["--auto-aof-rewrite-percentage", "0"],
+        )
         asyncio.run(_fill(node, writes, keys))
         reply_ms = asyncio.run(_rewrite(node)) if snapshot else None
 
