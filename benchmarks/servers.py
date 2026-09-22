@@ -40,8 +40,22 @@ class Endpoint:
 class _Process(AbstractContextManager["_Process"]):
     def __init__(self, name: str, argv: list[str], env: dict[str, str], log_path: Path) -> None:
         self.name = name
+        self._argv, self._env = argv, env
         self._log = log_path.open("wb")
         self._proc = subprocess.Popen(argv, env=env, stdout=self._log, stderr=subprocess.STDOUT)
+
+    def kill(self) -> None:
+        """SIGKILL: no shutdown code runs, like a crash (``kill -9``)."""
+        self._proc.kill()
+        self._proc.wait()
+
+    def restart(self) -> None:
+        """Start again with the same command, environment and data directory."""
+        if self._proc.poll() is None:
+            raise RuntimeError(f"{self.name} is still running")
+        self._proc = subprocess.Popen(
+            self._argv, env=self._env, stdout=self._log, stderr=subprocess.STDOUT
+        )
 
     def check_alive(self) -> None:
         if self._proc.poll() is not None:
@@ -65,6 +79,16 @@ class _Process(AbstractContextManager["_Process"]):
         self._log.close()
 
 
+def _remove_tree(path: Path) -> None:
+    """Delete ``path``, retrying briefly: on Windows a stopped process's files
+    can stay locked for a moment after it exits."""
+    for _ in range(40):
+        shutil.rmtree(path, ignore_errors=True)
+        if not path.exists():
+            return
+        time.sleep(0.05)
+
+
 def _wait_until(ready: Callable[[], bool], proc: _Process, what: str) -> None:
     deadline = time.monotonic() + _START_TIMEOUT_S
     while time.monotonic() < deadline:
@@ -79,6 +103,19 @@ def _http_ready(port: int) -> bool:
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/ready", timeout=1) as response:
             return bool(response.status == 200)
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+def _replica_synced(http_port: int) -> bool:
+    try:
+        url = f"http://127.0.0.1:{http_port}/v1/commands"
+        body = b'{"command": "INFO", "args": ["replication"]}'
+        request = urllib.request.Request(
+            url, data=body, headers={"content-type": "application/json"}
+        )
+        with urllib.request.urlopen(request, timeout=1) as response:
+            return b"master_link_status:up" in response.read()
     except (urllib.error.URLError, OSError):
         return False
 
@@ -98,7 +135,16 @@ class Deployment(AbstractContextManager["Deployment"]):
     def __init__(self, work_dir: Path | None = None) -> None:
         self._stack = ExitStack()
         self.dir = Path(tempfile.mkdtemp(prefix="kvbench-", dir=work_dir))
-        self._stack.callback(shutil.rmtree, self.dir, ignore_errors=True)
+        self._stack.callback(_remove_tree, self.dir)
+        self._nodes: dict[str, tuple[_Process, Callable[[], bool]]] = {}
+
+    def kill(self, name: str) -> None:
+        self._nodes[name][0].kill()
+
+    def restart(self, name: str) -> None:
+        proc, ready = self._nodes[name]
+        proc.restart()
+        _wait_until(ready, proc, name)
 
     def __enter__(self) -> Self:
         return self
@@ -128,8 +174,35 @@ class Deployment(AbstractContextManager["Deployment"]):
         proc = self._stack.enter_context(
             _Process(name, [sys.executable, "-m", "kvstore"], node_env, self.dir / f"{name}.log")
         )
-        _wait_until(lambda: _http_ready(http_port), proc, name)
+        ready = self._ready_fn(http_port, env.get("KV_REPLICAOF") is not None)
+        self._nodes[name] = (proc, ready)
+        _wait_until(ready, proc, name)
         return Endpoint(resp_port, http_port)
+
+    @staticmethod
+    def _ready_fn(http_port: int, replica: bool) -> Callable[[], bool]:
+        if not replica:
+            return lambda: _http_ready(http_port)
+        # A replica is ready once its first sync is done.
+        return lambda: _http_ready(http_port) and _replica_synced(http_port)
+
+    def replicated_cluster(
+        self, groups: int = 3, *, fsync: str = "everysec", **router_env: str
+    ) -> tuple[Endpoint, dict[str, tuple[Endpoint, Endpoint]]]:
+        """``groups`` shard groups of a primary and a replica, behind a router."""
+        members: dict[str, tuple[Endpoint, Endpoint]] = {}
+        spec = []
+        for i in range(1, groups + 1):
+            primary = self.kvstore_node(f"g{i}-primary", fsync=fsync)
+            replica = self.kvstore_node(
+                f"g{i}-replica", fsync=fsync, KV_REPLICAOF=f"127.0.0.1:{primary.resp_port}"
+            )
+            members[f"g{i}"] = (primary, replica)
+            spec.append(f"g{i}=127.0.0.1:{primary.resp_port}+127.0.0.1:{replica.resp_port}")
+        router = self.kvstore_node(
+            "router", KV_NODE_ROLE="router", KV_SHARDS=",".join(spec), **router_env
+        )
+        return router, members
 
     def kvstore_cluster(self, shards: int = 3, *, fsync: str = "everysec") -> Endpoint:
         addresses = []
