@@ -107,6 +107,7 @@ async def test_automatic_failover_promotes_the_replica(cluster: Cluster) -> None
     assert cluster.nodes["a2"].run("GET", key) == "after"
     # The other group was not touched.
     assert cluster.router.primary("b") == cluster.nodes["b1"].address
+    await cluster.manager.flush_config()
     saved = ClusterConfig.load(cluster.router_app.state.settings.data_dir / "cluster.json")
     assert saved is not None and saved.epoch == 1
 

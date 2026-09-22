@@ -112,6 +112,8 @@ class ClusterManager:
         self._clients: dict[str, KVClient] = {}
         self._task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
+        self._saved: ClusterConfig | None = None
+        self._saving: asyncio.Task[None] | None = None
 
     # ------------------------------------------------------------ lifecycle
     def start(self) -> None:
@@ -122,6 +124,7 @@ class ClusterManager:
             self._task.cancel()
             with suppress(asyncio.CancelledError):
                 await self._task
+        await self.flush_config()
         await asyncio.gather(*(client.close() for client in self._clients.values()))
 
     async def _loop(self) -> None:
@@ -133,11 +136,40 @@ class ClusterManager:
             await asyncio.sleep(self.heartbeat_interval_s)
 
     def set_config(self, config: ClusterConfig) -> None:
-        """Adopt ``config`` (a newer epoch): save it, then tell the router."""
+        """Adopt ``config`` (a newer epoch): the router routes by it at once, and
+        it is saved to disk in the background.
+
+        Not saved first, on the event loop: that fsync shares the disk with
+        every AOF on the host, and under write load it took seconds (p90 46 s
+        in a measurement on WSL2) -- during a failover, with the router
+        serving no one and the heartbeats stopped. Adopting first loses no
+        safety: the change (a promotion, keys moved) has already happened on
+        the nodes, so a crash before the file is written leaves the same
+        stale file either way -- and nodes refuse commands from its older
+        epoch, so a manager restarted from it cannot undo the change.
+        """
         self.config = config
-        if self._path is not None:
-            config.save(self._path)
         self._on_change(config)
+        if self._path is not None and (self._saving is None or self._saving.done()):
+            self._saving = asyncio.get_running_loop().create_task(self._save_latest())
+
+    async def _save_latest(self) -> None:
+        # One writer, always saving the newest config: files never land out of
+        # order, and changes made during a save are covered by the next one.
+        assert self._path is not None
+        while self._saved is not self.config:
+            config = self.config
+            try:
+                await asyncio.to_thread(config.save, self._path)
+            except OSError as exc:
+                logger.error("could not save the cluster config", extra={"error": str(exc)})
+                return  # the next change tries again
+            self._saved = config
+
+    async def flush_config(self) -> None:
+        """Wait until the config adopted so far is on disk."""
+        if self._saving is not None:
+            await self._saving
 
     # --------------------------------------------------------------- rounds
     async def tick(self) -> None:
