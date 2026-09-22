@@ -98,7 +98,11 @@ def measure(
         persistence = engine.persistence
         assert persistence is not None
         for _ in range(reps):
-            engine.save()  # one-shot copy, then wait for the writer and finalize
+            # One-shot copy, then wait for the writer and finalize. Set it here:
+            # the stall measurements below switch incremental copying on, and
+            # left on, the next repetition's "one-shot" copy was incremental.
+            engine.incremental_snapshots = False
+            engine.save()
             stats = persistence.stats()
             assert stats.last_snapshot_pause_ms is not None
             assert stats.last_rewrite_duration_ms is not None
