@@ -1,0 +1,9 @@
+# Writes per fsync under appendfsync=always: 50 write-only clients for 5 s,
+# Phase 3 code (9dcec05) vs Phase 4, alternating. From INFO: aof_fsyncs and
+# total_commands_processed. WSL2 on an i5-7200U, 2026-09-21.
+1 old |   throughput           173 ops/s   (864 ops in 5.0 s, 0 errors) | fsyncs=1075 commands=1076 writes/fsync=1.0
+1 new |   throughput         2,093 ops/s   (10,467 ops in 5.0 s, 0 errors) | fsyncs=1020 commands=12818 writes/fsync=12.6
+2 old |   throughput           241 ops/s   (1,203 ops in 5.0 s, 0 errors) | fsyncs=1513 commands=1514 writes/fsync=1.0
+2 new |   throughput           547 ops/s   (2,734 ops in 5.0 s, 0 errors) | fsyncs=380 commands=5023 writes/fsync=13.2
+3 old |   throughput             0 ops/s   (0 ops in 5.0 s, 0 errors) | fsyncs=51 commands=52 writes/fsync=1.0
+3 new |   throughput         1,433 ops/s   (7,165 ops in 5.0 s, 0 errors) | fsyncs=571 commands=7266 writes/fsync=12.7

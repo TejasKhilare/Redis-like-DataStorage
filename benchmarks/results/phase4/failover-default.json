@@ -1,0 +1,424 @@
+{
+ "modes": {
+  "0": {
+   "summary": {
+    "runs": 5,
+    "steady_ops_per_sec": 2041.6,
+    "promotion_s": 1.573,
+    "outage_s": 1.574,
+    "outage_s_max": 2.033,
+    "lost_writes_total": 0,
+    "acked_writes_total": 125356,
+    "failed_writes_other_groups": 0,
+    "rejoined": 5
+   },
+   "runs": [
+    {
+     "config": {
+      "groups": 3,
+      "writers": 20,
+      "before_s": 4.0,
+      "after_s": 10.0,
+      "restart_after_s": 4.0,
+      "wait_replicas": 0,
+      "heartbeat_interval_s": 0.5,
+      "suspect_after_s": 1.0,
+      "dead_after_s": 2.0,
+      "fsync": "everysec",
+      "work_dir": null
+     },
+     "steady_ops_per_sec": 2037.0,
+     "acked_writes": 22107,
+     "promotion_s": 1.534,
+     "detected_after_s": 2.024,
+     "outage_s": 1.537,
+     "recovered_after_kill_s": 1.537,
+     "failed_writes_victim": 67,
+     "failed_writes_other_groups": 0,
+     "lost_writes": 0,
+     "lost_in_victim_group": 0,
+     "lost_last_ack_before_kill_ms": null,
+     "old_primary_rejoined_as_replica": true,
+     "failover_event": {
+      "shard": "g1",
+      "old_primary": "127.0.0.1:58815",
+      "new_primary": "127.0.0.1:51191",
+      "epoch": 1,
+      "reason": "primary unreachable",
+      "detected_after_s": 2.024,
+      "promoted_at": 1789985207.7177544,
+      "candidate_offsets": {
+       "127.0.0.1:51191": 81683
+      }
+     }
+    },
+    {
+     "config": {
+      "groups": 3,
+      "writers": 20,
+      "before_s": 4.0,
+      "after_s": 10.0,
+      "restart_after_s": 4.0,
+      "wait_replicas": 0,
+      "heartbeat_interval_s": 0.5,
+      "suspect_after_s": 1.0,
+      "dead_after_s": 2.0,
+      "fsync": "everysec",
+      "work_dir": null
+     },
+     "steady_ops_per_sec": 1801.2,
+     "acked_writes": 24511,
+     "promotion_s": 1.573,
+     "detected_after_s": 2.059,
+     "outage_s": 1.574,
+     "recovered_after_kill_s": 1.577,
+     "failed_writes_victim": 69,
+     "failed_writes_other_groups": 0,
+     "lost_writes": 0,
+     "lost_in_victim_group": 0,
+     "lost_last_ack_before_kill_ms": null,
+     "old_primary_rejoined_as_replica": true,
+     "failover_event": {
+      "shard": "g1",
+      "old_primary": "127.0.0.1:49173",
+      "new_primary": "127.0.0.1:37183",
+      "epoch": 1,
+      "reason": "primary unreachable",
+      "detected_after_s": 2.059,
+      "promoted_at": 1789985234.8578389,
+      "candidate_offsets": {
+       "127.0.0.1:37183": 72280
+      }
+     }
+    },
+    {
+     "config": {
+      "groups": 3,
+      "writers": 20,
+      "before_s": 4.0,
+      "after_s": 10.0,
+      "restart_after_s": 4.0,
+      "wait_replicas": 0,
+      "heartbeat_interval_s": 0.5,
+      "suspect_after_s": 1.0,
+      "dead_after_s": 2.0,
+      "fsync": "everysec",
+      "work_dir": null
+     },
+     "steady_ops_per_sec": 2294.5,
+     "acked_writes": 26560,
+     "promotion_s": 1.574,
+     "detected_after_s": 2.033,
+     "outage_s": 1.577,
+     "recovered_after_kill_s": 1.577,
+     "failed_writes_victim": 80,
+     "failed_writes_other_groups": 0,
+     "lost_writes": 0,
+     "lost_in_victim_group": 0,
+     "lost_last_ack_before_kill_ms": null,
+     "old_primary_rejoined_as_replica": true,
+     "failover_event": {
+      "shard": "g1",
+      "old_primary": "127.0.0.1:38795",
+      "new_primary": "127.0.0.1:40755",
+      "epoch": 1,
+      "reason": "primary unreachable",
+      "detected_after_s": 2.033,
+      "promoted_at": 1789985262.376682,
+      "candidate_offsets": {
+       "127.0.0.1:40755": 92722
+      }
+     }
+    },
+    {
+     "config": {
+      "groups": 3,
+      "writers": 20,
+      "before_s": 4.0,
+      "after_s": 10.0,
+      "restart_after_s": 4.0,
+      "wait_replicas": 0,
+      "heartbeat_interval_s": 0.5,
+      "suspect_after_s": 1.0,
+      "dead_after_s": 2.0,
+      "fsync": "everysec",
+      "work_dir": null
+     },
+     "steady_ops_per_sec": 2041.6,
+     "acked_writes": 24954,
+     "promotion_s": 1.569,
+     "detected_after_s": 2.027,
+     "outage_s": 1.569,
+     "recovered_after_kill_s": 1.572,
+     "failed_writes_victim": 73,
+     "failed_writes_other_groups": 0,
+     "lost_writes": 0,
+     "lost_in_victim_group": 0,
+     "lost_last_ack_before_kill_ms": null,
+     "old_primary_rejoined_as_replica": true,
+     "failover_event": {
+      "shard": "g1",
+      "old_primary": "127.0.0.1:33899",
+      "new_primary": "127.0.0.1:47343",
+      "epoch": 1,
+      "reason": "primary unreachable",
+      "detected_after_s": 2.027,
+      "promoted_at": 1789985290.5408452,
+      "candidate_offsets": {
+       "127.0.0.1:47343": 81809
+      }
+     }
+    },
+    {
+     "config": {
+      "groups": 3,
+      "writers": 20,
+      "before_s": 4.0,
+      "after_s": 10.0,
+      "restart_after_s": 4.0,
+      "wait_replicas": 0,
+      "heartbeat_interval_s": 0.5,
+      "suspect_after_s": 1.0,
+      "dead_after_s": 2.0,
+      "fsync": "everysec",
+      "work_dir": null
+     },
+     "steady_ops_per_sec": 2347.7,
+     "acked_writes": 27224,
+     "promotion_s": 2.021,
+     "detected_after_s": 2.028,
+     "outage_s": 2.033,
+     "recovered_after_kill_s": 2.034,
+     "failed_writes_victim": 104,
+     "failed_writes_other_groups": 0,
+     "lost_writes": 0,
+     "lost_in_victim_group": 0,
+     "lost_last_ack_before_kill_ms": null,
+     "old_primary_rejoined_as_replica": true,
+     "failover_event": {
+      "shard": "g1",
+      "old_primary": "127.0.0.1:39169",
+      "new_primary": "127.0.0.1:52745",
+      "epoch": 1,
+      "reason": "primary unreachable",
+      "detected_after_s": 2.028,
+      "promoted_at": 1789985318.517661,
+      "candidate_offsets": {
+       "127.0.0.1:52745": 95001
+      }
+     }
+    }
+   ]
+  },
+  "1": {
+   "summary": {
+    "runs": 5,
+    "steady_ops_per_sec": 1681.8,
+    "promotion_s": 1.988,
+    "outage_s": 6.742,
+    "outage_s_max": 7.877,
+    "lost_writes_total": 0,
+    "acked_writes_total": 74116,
+    "failed_writes_other_groups": 0,
+    "rejoined": 5
+   },
+   "runs": [
+    {
+     "config": {
+      "groups": 3,
+      "writers": 20,
+      "before_s": 4.0,
+      "after_s": 10.0,
+      "restart_after_s": 4.0,
+      "wait_replicas": 1,
+      "heartbeat_interval_s": 0.5,
+      "suspect_after_s": 1.0,
+      "dead_after_s": 2.0,
+      "fsync": "everysec",
+      "work_dir": null
+     },
+     "steady_ops_per_sec": 1576.5,
+     "acked_writes": 13824,
+     "promotion_s": 1.988,
+     "detected_after_s": 2.031,
+     "outage_s": 6.742,
+     "recovered_after_kill_s": 6.743,
+     "failed_writes_victim": 1397,
+     "failed_writes_other_groups": 0,
+     "lost_writes": 0,
+     "lost_in_victim_group": 0,
+     "lost_last_ack_before_kill_ms": null,
+     "old_primary_rejoined_as_replica": true,
+     "failover_event": {
+      "shard": "g1",
+      "old_primary": "127.0.0.1:44203",
+      "new_primary": "127.0.0.1:56927",
+      "epoch": 1,
+      "reason": "primary unreachable",
+      "detected_after_s": 2.031,
+      "promoted_at": 1789985346.4445424,
+      "candidate_offsets": {
+       "127.0.0.1:56927": 132881
+      }
+     }
+    },
+    {
+     "config": {
+      "groups": 3,
+      "writers": 20,
+      "before_s": 4.0,
+      "after_s": 10.0,
+      "restart_after_s": 4.0,
+      "wait_replicas": 1,
+      "heartbeat_interval_s": 0.5,
+      "suspect_after_s": 1.0,
+      "dead_after_s": 2.0,
+      "fsync": "everysec",
+      "work_dir": null
+     },
+     "steady_ops_per_sec": 1776.7,
+     "acked_writes": 15910,
+     "promotion_s": 1.993,
+     "detected_after_s": 2.03,
+     "outage_s": 6.152,
+     "recovered_after_kill_s": 6.153,
+     "failed_writes_victim": 1825,
+     "failed_writes_other_groups": 0,
+     "lost_writes": 0,
+     "lost_in_victim_group": 0,
+     "lost_last_ack_before_kill_ms": null,
+     "old_primary_rejoined_as_replica": true,
+     "failover_event": {
+      "shard": "g1",
+      "old_primary": "127.0.0.1:55373",
+      "new_primary": "127.0.0.1:54611",
+      "epoch": 1,
+      "reason": "primary unreachable",
+      "detected_after_s": 2.03,
+      "promoted_at": 1789985370.9035678,
+      "candidate_offsets": {
+       "127.0.0.1:54611": 149048
+      }
+     }
+    },
+    {
+     "config": {
+      "groups": 3,
+      "writers": 20,
+      "before_s": 4.0,
+      "after_s": 10.0,
+      "restart_after_s": 4.0,
+      "wait_replicas": 1,
+      "heartbeat_interval_s": 0.5,
+      "suspect_after_s": 1.0,
+      "dead_after_s": 2.0,
+      "fsync": "everysec",
+      "work_dir": null
+     },
+     "steady_ops_per_sec": 1681.8,
+     "acked_writes": 13883,
+     "promotion_s": 1.978,
+     "detected_after_s": 2.027,
+     "outage_s": 7.287,
+     "recovered_after_kill_s": 7.288,
+     "failed_writes_victim": 1491,
+     "failed_writes_other_groups": 0,
+     "lost_writes": 0,
+     "lost_in_victim_group": 0,
+     "lost_last_ack_before_kill_ms": null,
+     "old_primary_rejoined_as_replica": true,
+     "failover_event": {
+      "shard": "g1",
+      "old_primary": "127.0.0.1:55853",
+      "new_primary": "127.0.0.1:36187",
+      "epoch": 1,
+      "reason": "primary unreachable",
+      "detected_after_s": 2.027,
+      "promoted_at": 1789985402.0126905,
+      "candidate_offsets": {
+       "127.0.0.1:36187": 140870
+      }
+     }
+    },
+    {
+     "config": {
+      "groups": 3,
+      "writers": 20,
+      "before_s": 4.0,
+      "after_s": 10.0,
+      "restart_after_s": 4.0,
+      "wait_replicas": 1,
+      "heartbeat_interval_s": 0.5,
+      "suspect_after_s": 1.0,
+      "dead_after_s": 2.0,
+      "fsync": "everysec",
+      "work_dir": null
+     },
+     "steady_ops_per_sec": 1857.3,
+     "acked_writes": 16720,
+     "promotion_s": 1.534,
+     "detected_after_s": 2.033,
+     "outage_s": 6.285,
+     "recovered_after_kill_s": 6.286,
+     "failed_writes_victim": 1867,
+     "failed_writes_other_groups": 0,
+     "lost_writes": 0,
+     "lost_in_victim_group": 0,
+     "lost_last_ack_before_kill_ms": null,
+     "old_primary_rejoined_as_replica": true,
+     "failover_event": {
+      "shard": "g1",
+      "old_primary": "127.0.0.1:50987",
+      "new_primary": "127.0.0.1:45183",
+      "epoch": 1,
+      "reason": "primary unreachable",
+      "detected_after_s": 2.033,
+      "promoted_at": 1789985429.0107155,
+      "candidate_offsets": {
+       "127.0.0.1:45183": 156351
+      }
+     }
+    },
+    {
+     "config": {
+      "groups": 3,
+      "writers": 20,
+      "before_s": 4.0,
+      "after_s": 10.0,
+      "restart_after_s": 4.0,
+      "wait_replicas": 1,
+      "heartbeat_interval_s": 0.5,
+      "suspect_after_s": 1.0,
+      "dead_after_s": 2.0,
+      "fsync": "everysec",
+      "work_dir": null
+     },
+     "steady_ops_per_sec": 1654.1,
+     "acked_writes": 13779,
+     "promotion_s": 2.046,
+     "detected_after_s": 2.078,
+     "outage_s": 7.877,
+     "recovered_after_kill_s": 7.866,
+     "failed_writes_victim": 1645,
+     "failed_writes_other_groups": 0,
+     "lost_writes": 0,
+     "lost_in_victim_group": 0,
+     "lost_last_ack_before_kill_ms": null,
+     "old_primary_rejoined_as_replica": true,
+     "failover_event": {
+      "shard": "g1",
+      "old_primary": "127.0.0.1:55691",
+      "new_primary": "127.0.0.1:49329",
+      "epoch": 1,
+      "reason": "primary unreachable",
+      "detected_after_s": 2.078,
+      "promoted_at": 1789985456.7071633,
+      "candidate_offsets": {
+       "127.0.0.1:49329": 138594
+      }
+     }
+    }
+   ]
+  }
+ }
+}

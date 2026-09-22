@@ -1,0 +1,223 @@
+{
+ "environment": {
+  "date": "2026-09-21T09:40:52+00:00",
+  "kvstore_version": "0.3.0",
+  "git_commit": "9dcec05",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "kernel": "6.18.33.2-microsoft-standard-WSL2",
+  "python": "3.12.3",
+  "event_loop": "uvloop 0.22.1",
+  "cpu": "Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz",
+  "logical_cpus": 4,
+  "memory_gb": 9.7,
+  "load_average_at_start": [
+   "1.51",
+   "0.97",
+   "0.49"
+  ],
+  "redis_version": null
+ },
+ "options": {
+  "clients": 50,
+  "duration_s": 8.0,
+  "warmup_s": 2.0,
+  "reps": 1,
+  "keyspace": 100000,
+  "value_size": 64
+ },
+ "scenarios": [
+  {
+   "scenario": "kvstore/resp fsync=everysec get=90% P=1",
+   "group": "protocol",
+   "target": "kvstore",
+   "protocol": "resp",
+   "fsync": "everysec",
+   "read_ratio": 0.9,
+   "pipeline": 1,
+   "reps": 1,
+   "ops_per_sec": 13502.1,
+   "ops_per_sec_min": 13502.1,
+   "ops_per_sec_max": 13502.1,
+   "errors": 0,
+   "latency_us": {
+    "p50": 3072.0,
+    "p75": 4104.2,
+    "p90": 5423.1,
+    "p99": 13729.8,
+    "p99.9": 15958.0,
+    "p99.99": 24707.1,
+    "mean": 3687.8,
+    "max": 25387.5
+   }
+  },
+  {
+   "scenario": "kvstore/resp fsync=always get=0% P=1",
+   "group": "fsync",
+   "target": "kvstore",
+   "protocol": "resp",
+   "fsync": "always",
+   "read_ratio": 0.0,
+   "pipeline": 1,
+   "reps": 1,
+   "ops_per_sec": 131.1,
+   "ops_per_sec_min": 131.1,
+   "ops_per_sec_max": 131.1,
+   "errors": 0,
+   "latency_us": {
+    "p50": 374341.6,
+    "p75": 512753.7,
+    "p90": 627048.4,
+    "p99": 899678.2,
+    "p99.9": 899678.2,
+    "p99.99": 933167.5,
+    "mean": 386011.9,
+    "max": 933167.5
+   }
+  },
+  {
+   "scenario": "kvstore/resp fsync=everysec get=0% P=1",
+   "group": "fsync",
+   "target": "kvstore",
+   "protocol": "resp",
+   "fsync": "everysec",
+   "read_ratio": 0.0,
+   "pipeline": 1,
+   "reps": 1,
+   "ops_per_sec": 3100.5,
+   "ops_per_sec_min": 3100.5,
+   "ops_per_sec_max": 3100.5,
+   "errors": 0,
+   "latency_us": {
+    "p50": 15237.1,
+    "p75": 18808.8,
+    "p90": 27328.5,
+    "p99": 41549.8,
+    "p99.9": 52559.9,
+    "p99.99": 53608.4,
+    "mean": 16100.9,
+    "max": 53709.3
+   }
+  },
+  {
+   "scenario": "kvstore/resp fsync=no get=0% P=1",
+   "group": "fsync",
+   "target": "kvstore",
+   "protocol": "resp",
+   "fsync": "no",
+   "read_ratio": 0.0,
+   "pipeline": 1,
+   "reps": 1,
+   "ops_per_sec": 5768.6,
+   "ops_per_sec_min": 5768.6,
+   "ops_per_sec_max": 5768.6,
+   "errors": 0,
+   "latency_us": {
+    "p50": 5980.2,
+    "p75": 8618.0,
+    "p90": 17891.3,
+    "p99": 29032.4,
+    "p99.9": 42598.4,
+    "p99.99": 43909.1,
+    "mean": 8651.4,
+    "max": 44033.6
+   }
+  },
+  {
+   "scenario": "kvstore/resp fsync=always get=0% P=16",
+   "group": "group-commit",
+   "target": "kvstore",
+   "protocol": "resp",
+   "fsync": "always",
+   "read_ratio": 0.0,
+   "pipeline": 16,
+   "reps": 1,
+   "ops_per_sec": 10748.0,
+   "ops_per_sec_min": 10748.0,
+   "ops_per_sec_max": 10748.0,
+   "errors": 0,
+   "latency_us": {
+    "p50": 65404.9,
+    "p75": 83623.9,
+    "p90": 112984.1,
+    "p99": 202899.5,
+    "p99.9": 265814.0,
+    "p99.99": 265814.0,
+    "mean": 74109.9,
+    "max": 265991.0
+   }
+  },
+  {
+   "scenario": "kvstore/http fsync=everysec get=90% P=1",
+   "group": "protocol",
+   "target": "kvstore",
+   "protocol": "http",
+   "fsync": "everysec",
+   "read_ratio": 0.9,
+   "pipeline": 1,
+   "reps": 1,
+   "ops_per_sec": 419.5,
+   "ops_per_sec_min": 419.5,
+   "ops_per_sec_max": 419.5,
+   "errors": 0,
+   "latency_us": {
+    "p50": 95682.6,
+    "p75": 134742.0,
+    "p90": 217579.5,
+    "p99": 468713.5,
+    "p99.9": 531628.0,
+    "p99.99": 622632.0,
+    "mean": 119424.5,
+    "max": 622632.0
+   }
+  },
+  {
+   "scenario": "router/resp fsync=everysec get=90% P=1",
+   "group": "router",
+   "target": "router",
+   "protocol": "resp",
+   "fsync": "everysec",
+   "read_ratio": 0.9,
+   "pipeline": 1,
+   "reps": 1,
+   "ops_per_sec": 2008.6,
+   "ops_per_sec_min": 2008.6,
+   "ops_per_sec_max": 2008.6,
+   "errors": 0,
+   "latency_us": {
+    "p50": 19071.0,
+    "p75": 30081.0,
+    "p90": 46792.7,
+    "p99": 71041.0,
+    "p99.9": 144179.2,
+    "p99.99": 155671.2,
+    "mean": 24904.8,
+    "max": 155671.2
+   }
+  },
+  {
+   "scenario": "router/resp fsync=everysec get=90% P=16",
+   "group": "router",
+   "target": "router",
+   "protocol": "resp",
+   "fsync": "everysec",
+   "read_ratio": 0.9,
+   "pipeline": 16,
+   "reps": 1,
+   "ops_per_sec": 12698.0,
+   "ops_per_sec_min": 12698.0,
+   "ops_per_sec_max": 12698.0,
+   "errors": 0,
+   "latency_us": {
+    "p50": 51773.4,
+    "p75": 74711.0,
+    "p90": 94109.7,
+    "p99": 192413.7,
+    "p99.9": 202899.5,
+    "p99.99": 206045.2,
+    "mean": 62820.3,
+    "max": 206482.7
+   }
+  }
+ ],
+ "elapsed_s": 190.8
+}
