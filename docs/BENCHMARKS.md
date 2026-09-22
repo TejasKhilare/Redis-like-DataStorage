@@ -218,6 +218,78 @@ Each item is ranked by the gap it closes, measured above.
 | 4 | **Incremental keyspace copy** for rewrites: copy in slices between commands, recording writes made in between | 369 ms pause at 1M keys | p99.99 tail at large keyspaces |
 | 5 | Leave the REST API as is | 17× slower than RESP, by design | none (it is the control plane) |
 
+Items 1 and 2 were done in Phase 4, and their measured effect is below.
+Items 3 and 4 move to Phase 5.
+
+## Phase 4: before and after
+
+Measured on the same machine, running the Phase 3 code (commit `9dcec05`) and
+the Phase 4 code alternately (raw data in
+[`benchmarks/results/phase4/`](../benchmarks/results/phase4/)).
+
+| change (ADR-0011) | scenario | Phase 3 | Phase 4 | gain |
+|---|---|--:|--:|--:|
+| router with multiplexed, pipelined connections | 90% GET through the router, pipeline 16 | 2,065 ops/s | 13,249 ops/s | **6.4×** |
+| group commit across clients | 100% SET, `always`, pipeline 16 | 3,032 SETs/s | 11,997 SETs/s | **4.0×** |
+| group commit across clients | 100% SET, `always`, 50 clients, no pipelining | 1.0 writes per fsync, 173 SETs/s | 12.6–13.2 writes per fsync, 1,433 SETs/s | **~13× fewer fsyncs**, ≈8× throughput |
+
+The last row counts fsyncs directly (`aof_fsyncs` and
+`total_commands_processed` in `INFO`), so machine noise can't blur it. The
+throughputs there are medians of 3 runs. fsync latency on the laptop's
+virtual disk varies a lot: one Phase 3 run acknowledged **no write at all in
+5 s**, with 50 clients queued behind one fsync each. The unpipelined
+throughput scenarios varied by up to 3× between repetitions of the *same*
+code during these runs, so no gain is claimed for them.
+
+## Phase 4: failover under load
+
+`python -m benchmarks.failover`:
+- 3 shard groups, each a primary and a replica, behind the router with its
+  cluster manager, every node its own process;
+- 20 clients write unique keys through the router the whole time;
+- after 4 s, one primary is `kill -9`ed; 4 s later it is restarted on the
+  same address and data directory;
+- afterwards, every acknowledged write is read back.
+
+5 runs per row:
+
+| profile | replication | steady writes/s | promotion, median (max) | outage, median (max) | acked writes lost | failures in other groups | old primary rejoined |
+|---|---|--:|--:|--:|--:|--:|--:|
+| default (heartbeat 0.5 s, dead after 2 s) | asynchronous | 2,042 | **1.57 s** (2.02) | **1.57 s** (2.03) | **0** of 125,356 | 0 | 5 / 5 |
+| default | `KV_WAIT_REPLICAS=1` | 1,682 | 1.99 s (2.05) | 6.74 s (7.88) | **0** of 74,116 | 0 | 5 / 5 |
+| fast (heartbeat 0.1 s, dead after 0.5 s) | asynchronous | 2,073 | **0.46 s** (0.53) | **0.46 s** (0.55) | **0** of 147,111 | 0 | 5 / 5 |
+
+*Promotion* runs from the kill to the manager promoting the replica. *Outage*
+is the longest gap between acknowledged writes to the killed group, as its
+clients saw it.
+
+- **The outage is the detection timeout.** It matches the promotion time to
+  within a few milliseconds, because the router switches the moment the
+  manager decides. Detection takes the dead-after timeout minus the time since
+  the last heartbeat, so the fast profile recovers in under half a second.
+  That profile would also fail over on a brief network hiccup (ADR-0009).
+- **No acknowledged write was lost in 15 kills, but asynchronous replication
+  doesn't guarantee that.** The primary streams each commit to its replica
+  right after the AOF write, so the replica is behind by one commit plus
+  loopback latency: a sub-millisecond window, which these kills never hit.
+  Over a real network the window is wider.
+- **Synchronous acknowledgement trades availability for durability.**
+  `KV_WAIT_REPLICAS=1` makes loss impossible by construction, at 18% lower
+  write throughput (1,682 vs 2,042). It also stretches the outage to about
+  7 s. After the failover the promoted node *has no replica*, so no write can
+  be confirmed until the old primary restarts (+4 s) and resyncs. That is the
+  CAP trade-off, measured. With two replicas per group, one would remain
+  after a failover and the group would stay writable.
+- **Failures are isolated:** the other two groups saw no failed write in any
+  run.
+- **Fencing works:** the killed primary came back believing it was the
+  primary, was demoted by the manager, and rejoined as a replica, 15 times
+  out of 15.
+
+The "steady writes/s" column comes from 20 closed-loop clients sending one
+write at a time, sized for measuring failover. It isn't a throughput
+benchmark.
+
 ## Reproduce
 
 ```bash
@@ -235,6 +307,10 @@ python -m benchmarks.pause --merge-into benchmarks/results/latest.json
 python -m benchmarks.report benchmarks/results/latest.json
 
 # Or: make bench REDIS=redis-7.2.7/src && make bench-report
+
+# Phase 4: failover under load (~10 min for the three profiles above)
+python -m benchmarks.failover --runs 5 --wait-replicas 0 1 --out benchmarks/results/failover-default.json
+python -m benchmarks.failover --runs 5 --heartbeat 0.1 --dead-after 0.5 --out benchmarks/results/failover-fast.json
 ```
 
 Run it on Linux, with nothing else running on the machine. On Windows,

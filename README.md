@@ -4,6 +4,10 @@ A distributed, in-memory datastore built from scratch in Python. It speaks
 **RESP2, the Redis wire protocol**, so unmodified Redis clients can connect,
 including `redis-cli` and `redis-py`. It supports strings, lists, hashes, sets
 and sorted sets, and shards data across nodes with consistent hashing.
+Each shard is a **replicated group**: a primary streams its writes to its
+replicas (Redis's PSYNC protocol), a cluster manager **fails over
+automatically** when a primary dies, and shard groups can be **added or
+removed live**, moving only the keys that change owner.
 
 Its persistence is modeled on Redis 7: an append-only file with a CRC on every
 record, three fsync policies, background rewrite into binary snapshots, and a
@@ -12,8 +16,8 @@ node also serves a **FastAPI control plane** for REST access, health checks
 and introspection.
 
 ![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
-![tests](https://img.shields.io/badge/tests-307%20passing-brightgreen)
-![coverage](https://img.shields.io/badge/coverage-97%25-brightgreen)
+![tests](https://img.shields.io/badge/tests-358%20passing-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-blue)
 
 ## Architecture
@@ -22,20 +26,22 @@ and introspection.
 flowchart LR
     C1[redis-cli / redis-py / any RESP client] -->|RESP :7000| R
     C2[HTTP client] -->|REST :8000| R
-    subgraph R[Router - stateless]
-      HR[consistent hash ring + hash tags<br/>fan-out: DBSIZE, KEYS, FLUSHALL]
+    subgraph R[Router]
+      HR[hash ring over shard groups + hash tags<br/>multiplexed, pipelined connections]
+      M[cluster manager<br/>heartbeats, failover, rebalancing]
     end
-    R -->|owner of key| S1
-    R --> S2
-    R --> S3
-    subgraph S1[Shard]
-      E1[Engine: store + eviction + expiry] --> P1[(manifest<br/>snapshot + AOF)]
+    R -->|one pipeline per group| G1
+    R --> G2
+    R --> G3
+    M -. INFO / REPLICAOF .-> G1
+    subgraph G1[Shard group 1]
+      P1[primary<br/>engine + AOF] -->|PSYNC stream| RP1[replica]
     end
-    subgraph S2[Shard]
-      E2[Engine] --> P2[(...)]
+    subgraph G2[Shard group 2]
+      P2[primary] --> RP2[replica]
     end
-    subgraph S3[Shard]
-      E3[Engine] --> P3[(...)]
+    subgraph G3[Shard group 3]
+      P3[primary] --> RP3[replica]
     end
 ```
 
@@ -100,27 +106,59 @@ flowchart LR
 - If an AOF write fails, the node refuses further writes with `MISCONF`
   instead of silently losing data. Reads keep working.
 
-**Cluster**
-- A stateless router uses consistent hashing (100 virtual nodes per shard).
-  **Hash tags** (`{user:1}:cart`) place related keys on the same shard.
-- A multi-key command whose keys live on different shards fails with `CROSSSLOT`.
-- The router answers some commands itself (`PING`, `ECHO`, `COMMAND`) and
-  sends others to every shard and combines the replies (`DBSIZE`, `KEYS`, `FLUSHALL`).
-- If a shard fails, only its keys are affected (`CLUSTERDOWN` / HTTP 503).
-  The router's readiness reports `degraded`.
+**Replication** (ADR-0008)
+- Redis's protocol: `PSYNC` with full resync (a snapshot at an offset) or
+  partial resync from a backlog, byte offsets, `REPLCONF ACK`, `ROLE`,
+  `INFO replication`, `WAIT`, `min-replicas-to-write`.
+- Replicas are read-only and apply the primary's *effects*, so they converge
+  exactly. Expiries arrive as `DEL`s; a replica never expires keys on its
+  own clock.
+- After a promotion, the other replicas continue with a partial resync. A
+  former primary whose history diverged must resync fully, which discards
+  the writes only it took.
+
+**Failover** (ADR-0009)
+- The router's cluster manager sends heartbeats (healthy, then suspect, then
+  dead) and promotes the replica with the highest offset under a new
+  **epoch**. It saves the config and switches routing at once.
+- Nodes refuse a stale epoch. A replaced primary that returns is fenced,
+  demoted and resynced.
+- Measured: a `kill -9` of a primary under load recovers in ~1.6 s with the
+  default timeouts. The other groups see no errors, and **no acknowledged
+  write was lost** (see [BENCHMARKS.md](docs/BENCHMARKS.md#phase-4-failover-under-load)).
+- Optional write concern: `KV_WAIT_REPLICAS=1` acknowledges a write only once
+  a replica has it.
+
+**Cluster and routing** (ADR-0004, 0010, 0011)
+- The consistent-hash ring holds **shard-group ids**, so a failover moves no
+  keys. **Hash tags** (`{user:1}:cart`) keep related keys together.
+  Cross-group multi-key commands fail with `CROSSSLOT`.
+- **Live rebalancing.** Adding or removing a group moves only the keys that
+  change owner (≈1/N), with `-ASK`/`-TRYAGAIN` redirects while they move.
+  Writes are never lost.
+- **A multiplexed router.** Concurrent requests share connections, a
+  client's pipeline is sent as one pipeline per group, and retries happen
+  only when a write can't be applied twice.
+- **Group commit across clients.** Every connection served in one event-loop
+  iteration shares one AOF fsync, as in Redis.
 
 ## Quickstart
 
 ```bash
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-python scripts/run_cluster.py                      # 3 shards + router, Ctrl+C to stop
+python scripts/run_cluster.py --replicas 1         # 3 groups of primary + replica, and a router
 ```
 
 | Node | RESP (TCP) | HTTP |
 |---|---|---|
-| router | 7000 | http://127.0.0.1:8000/docs |
-| shard-1 / 2 / 3 | 6379 / 6380 / 6381 | :8001 / :8002 / :8003 |
+| router (and cluster manager) | 7000 | http://127.0.0.1:8000/docs |
+| shard-1 / 2 / 3 (primaries) | 6379 / 6380 / 6381 | :8001 / :8002 / :8003 |
+| their replicas | 6479 / 6480 / 6481 | :8101 / :8102 / :8103 |
+
+Kill a primary (Ctrl+C its process, or `kill -9`), then watch
+`GET http://127.0.0.1:8000/v1/cluster/nodes`. Within about 2 s its replica is
+the primary, and writes through the router go on.
 
 ```text
 $ redis-cli -p 7000                    # or: python -m kvstore.cli --port 7000
@@ -155,7 +193,11 @@ r.rpush("queue", "job-1", "job-2")
 | `POST` | `/v1/commands` | Run any command: `{"command": "ZADD", "args": ["b", 10, "x"]}` |
 | `POST` | `/v1/admin/rewrite` | Background snapshot + AOF rewrite (every shard, via the router) |
 | `GET` | `/v1/admin/info` | Memory, eviction, persistence and fsync statistics |
-| `GET` | `/v1/cluster/nodes`, `/v1/cluster/keys/{key}/owner` | Topology (router only) |
+| `GET` | `/v1/cluster/nodes` | Every node: role, health (healthy / suspect / dead), offset, epoch |
+| `GET` | `/v1/cluster/config`, `/v1/cluster/events` | The routing config (epoch, groups, ring) and failover history |
+| `POST` | `/v1/cluster/shards/{id}/failover` | Promote a group's most up-to-date replica |
+| `POST` `DELETE` | `/v1/cluster/shards`, `/v1/cluster/shards/{id}` | Add or remove a shard group, moving only the keys that change owner |
+| `GET` | `/v1/cluster/keys/{key}/owner` | Which group owns a key, and its primary |
 | `GET` | `/health`, `/ready` | Liveness and readiness probes |
 
 Every setting is a `KV_*` environment variable; see [.env.example](.env.example).
@@ -203,19 +245,20 @@ src/kvstore/
 │   ├── datatypes/          skip list, sorted set, list/hash/set containers, sizing
 │   ├── eviction/           lru, lfu, random, noeviction
 │   └── persistence/        aof (CRC, fsync), snapshot (binary), manifest, manager (rewrites)
-├── protocol/               RESP codec, TCP server (group commit), async client
-├── cluster/                hash ring, router (hash tags, fan-out)
+├── protocol/               RESP codec, TCP server (cross-client group commit), multiplexed client
+├── replication/            stream + backlog, primary (PSYNC, WAIT), replica link, node roles
+├── cluster/                topology (groups, epochs), router, manager (failover), migration
 ├── api/ schemas/ services/ FastAPI control plane
 └── cli.py                  redis-cli style client
-benchmarks/                 load generator (RESP/HTTP, open/closed loop), suite, report, results
-tests/                      307 tests: unit, integration, redis-py compatibility, crash recovery
+benchmarks/                 load generator, suite, failover chaos run, report, results
+tests/                      358 tests: unit, integration, replication, failover, rebalancing
 docs/                       benchmarks, roadmap, architecture decision records
 ```
 
 ## Development
 
 ```bash
-python -m pytest --cov     # 307 tests, ~65s
+python -m pytest --cov     # 358 tests, ~1 min
 ruff check . && mypy       # lint + strict typing
 ```
 
@@ -228,9 +271,13 @@ ruff check . && mypy       # lint + strict typing
 - [ADR-0005](docs/adr/0005-resp-and-the-value-model.md): RESP and the value model
 - [ADR-0006](docs/adr/0006-forkless-rewrite-fsync-and-group-commit.md): rewrite without fork(), fsync policies, group commit
 - [ADR-0007](docs/adr/0007-benchmark-methodology.md): benchmark methodology
+- [ADR-0008](docs/adr/0008-asynchronous-replication-with-psync.md): asynchronous replication with PSYNC
+- [ADR-0009](docs/adr/0009-failure-detection-and-failover-with-epochs.md): failure detection and failover with epochs
+- [ADR-0010](docs/adr/0010-rebalancing-with-ask-redirects.md): rebalancing that moves only the keys that change owner
+- [ADR-0011](docs/adr/0011-multiplexed-router-and-cross-client-group-commit.md): a multiplexed router and group commit across clients
 
-The roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md). Phase 4 adds replication,
-failover and router pipelining.
+The roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md). Phase 5 adds metrics,
+dashboards and chaos tests.
 
 ## License
 

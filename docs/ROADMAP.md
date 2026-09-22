@@ -45,24 +45,38 @@ Every phase ends with passing CI, tests for new code, and an updated README and 
 - [x] `docs/BENCHMARKS.md` with charts (light and dark), tables, raw results and reproduction steps
 - [x] 307 tests, 97% coverage
 
-## Phase 4: Distributed systems
+## Phase 4: Distributed systems ✅ (v0.4.0)
 
-Targets from the Phase 3 numbers:
-- [ ] Router: forward a client's pipeline to each shard as one pipeline. The router runs at 23% of
-      a direct shard's throughput (3,897 vs 17,150 ops/s), and pipelining through it gains 1.3×
-      instead of 2.7×.
-- [ ] Group commit across connections: one AOF fsync per event-loop iteration, as Redis does.
-      With `appendfsync always`, kvstore does 406 SETs/s against Redis's 7,389.
-- [ ] Cheaper AOF record encoding (JSON today); writes cost 36% of throughput.
-- [ ] Incremental keyspace copy for rewrites: the copy pauses the server 369 ms at 1M keys.
-- [ ] Router connection pooling, retries, timeouts
-- [ ] Primary-replica async replication with offsets
-- [ ] Heartbeats, failure detection, failover with epochs (no split-brain)
-- [ ] Rebalancing on node add/remove (move only affected keys)
-- [ ] Stretch: Raft for cluster config; N/R/W quorums
+From the Phase 3 bottlenecks (ADR-0011):
+- [x] Router: a client's pipeline goes to each shard group as one pipeline, over multiplexed,
+      pooled connections: **6.4x** with pipelining (≈2.0k → ≈13.2k ops/s)
+- [x] Group commit across clients: **~13 writes per fsync instead of 1** under `appendfsync always`
+- [x] Router timeouts and retries, only when a write cannot be applied twice
+
+The plan (ADR-0008 to ADR-0010):
+- [x] Shard groups (a primary plus replicas) with stable ids; a versioned config (epochs) saved as `cluster.json`
+- [x] Asynchronous replication with PSYNC: full resync from a snapshot, partial resync from a
+      backlog, byte offsets, acks, `WAIT`, `min-replicas-to-write`, read-only replicas
+- [x] Optional reads from healthy replicas (`KV_READ_FROM_REPLICAS`)
+- [x] Failure detection (healthy → suspect → dead) and automatic failover to the most
+      up-to-date replica under a new epoch; a returning primary is fenced and resynced
+- [x] Optional write concern: acknowledge a write only once a replica has it (`KV_WAIT_REPLICAS`)
+- [x] Rebalancing: add or remove a group live, moving only the keys that change owner (≈1/N),
+      with `-ASK` / `-TRYAGAIN` redirects
+- [x] Cluster endpoints: nodes, config, events, failover, add/remove group
+- [x] Chaos benchmark: `kill -9` a primary under load. Recovered in 1.57 s (median of 5),
+      0 acknowledged writes lost, the other groups unaffected, the old primary rejoined as a replica
+- [x] 358 tests, 96% coverage, mypy --strict
+- [ ] Stretch, not done: Raft for the cluster config (the manager is a single process;
+      see ADR-0009), N/R/W quorum reads and writes
 
 ## Phase 5: Observability and chaos testing
 
+Carried over from the Phase 3 findings:
+- [ ] Cheaper AOF record encoding (JSON today); writes cost 36% of throughput
+- [ ] An incremental keyspace copy for rewrites and full resyncs (369 ms pause at 1M keys)
+
+Planned:
 - [ ] Prometheus `/metrics`, Grafana dashboard
 - [ ] Chaos tests: kill nodes, add latency, simulate partitions
 - [ ] Benchmarks (round 2): scaling with the number of shards, failover time, recovery time

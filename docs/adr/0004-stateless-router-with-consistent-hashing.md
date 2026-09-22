@@ -1,6 +1,6 @@
 # ADR-0004: A stateless router with consistent hashing
 
-**Status:** accepted (Phase 1)
+**Status:** accepted (Phase 1); amended in Phase 4 by ADR-0008 to ADR-0011 (the ring now holds shard-group ids; replication, failover, rebalancing, pooled multiplexed connections)
 
 ## Context
 Keys must be spread across shards so that adding or removing a shard doesn't
