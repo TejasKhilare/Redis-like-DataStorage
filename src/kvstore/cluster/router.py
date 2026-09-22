@@ -51,6 +51,7 @@ from kvstore.core.exceptions import (
     UnknownCommandError,
 )
 from kvstore.engine.commands import COMMANDS, STATELESS, CommandContext, CommandSpec
+from kvstore.observability.metrics import CommandStats
 from kvstore.protocol.client import KVClientPool
 from kvstore.protocol.resp import OK
 
@@ -141,6 +142,10 @@ class ShardRouter:
         self.config = config
         self.ring: ConsistentHashRing = config.ring()
         self.retries_performed = 0
+        # Metrics: client commands by name; per group, batches (latency) and commands.
+        self.commands: dict[str, int] = {}
+        self.group_stats = CommandStats()
+        self.group_commands: dict[str, int] = {}
 
     # ------------------------------------------------------------ config
     def apply_config(self, config: ClusterConfig) -> bool:
@@ -183,6 +188,11 @@ class ShardRouter:
         """Run a client's pipeline; one result per command, errors in place."""
         results: list[Any] = [None] * len(commands)
         pending: dict[str, list[int]] = {}
+        counts = self.commands
+        for command in commands:
+            name = str(command[0]).lower() if command else ""
+            name = name if name.upper() in COMMANDS else "unknown"
+            counts[name] = counts.get(name, 0) + 1
         for i, command in enumerate(commands):
             try:
                 routed, local = self._route(command)
@@ -251,6 +261,17 @@ class ShardRouter:
 
     async def _send(self, shard: str, commands: list[Sequence[Any]]) -> list[Any]:
         """One group's share of a batch, with the safe retries described above."""
+        started = time.perf_counter()
+        results = await self._send_with_retries(shard, commands)
+        stats = self.group_stats
+        stats.record(shard, time.perf_counter() - started)
+        self.group_commands[shard] = self.group_commands.get(shard, 0) + len(commands)
+        for result in results:
+            if isinstance(result, KVStoreError):
+                stats.error(shard, result.prefix)
+        return results
+
+    async def _send_with_retries(self, shard: str, commands: list[Sequence[Any]]) -> list[Any]:
         results: list[Any] = [None] * len(commands)
         todo = list(range(len(commands)))
         readonly = all(self._is_read(commands[i]) for i in todo)

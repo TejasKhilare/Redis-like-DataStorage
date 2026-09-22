@@ -27,6 +27,7 @@ dev = [
     "mypy>=1.11",
     "pre-commit>=3.8",
     "redis>=5.0",  # compatibility tests run the official client against kvstore
+    "prometheus-client>=0.20",  # tests parse /metrics with the official parser
 ]
 bench = [
     "matplotlib>=3.8",  # charts for docs/BENCHMARKS.md (python -m benchmarks.report)

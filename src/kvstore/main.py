@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from kvstore import __version__
-from kvstore.api import health
+from kvstore.api import health, metrics
 from kvstore.api.errors import register_exception_handlers
 from kvstore.api.middleware import install_request_middleware
 from kvstore.api.v1.router import build_v1_router
@@ -32,5 +32,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_exception_handlers(app)
     install_request_middleware(app, access_log=settings.access_log)
     app.include_router(health.router)
+    app.include_router(metrics.router)
     app.include_router(build_v1_router(settings.node_role))
     return app

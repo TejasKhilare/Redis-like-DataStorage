@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     dead_after_s: float = Field(default=2.0, gt=0)
 
     # ---- observability
+    metrics_enabled: bool = Field(
+        default=True, description="Per-command counters and latency histograms (/metrics)."
+    )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_format: Literal["json", "text"] = "json"
     access_log: bool = True

@@ -80,6 +80,7 @@ async def shard_lifespan(app: FastAPI) -> AsyncIterator[None]:
             min_replicas_to_write=settings.min_replicas_to_write,
             min_replicas_max_lag_s=settings.min_replicas_max_lag_s,
         ),
+        metrics=settings.metrics_enabled,
     )
     service = LocalKVService(node, group_commit)
     tcp_server = _tcp_server(settings, node.execute, group_commit=group_commit)

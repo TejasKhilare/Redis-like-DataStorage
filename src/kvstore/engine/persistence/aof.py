@@ -32,6 +32,7 @@ import json
 import logging
 import os
 import threading
+import time
 import zlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -39,6 +40,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from kvstore.core.exceptions import AOFCorruptedError, CommandError
+from kvstore.observability.metrics import Histogram
+from kvstore.protocol.resp import RequestParser, encode_command
 
 logger = logging.getLogger(__name__)
 
@@ -91,11 +94,14 @@ def _decode_v1(raw: bytes) -> tuple[str, list[Any]]:
 
 
 class AOFWriter:
-    def __init__(self, path: Path, fsync: FsyncPolicy = "everysec") -> None:
+    def __init__(
+        self, path: Path, fsync: FsyncPolicy = "everysec", fsync_seconds: Histogram | None = None
+    ) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self.fsync_policy = fsync
         self.fsyncs = 0
+        self._fsync_seconds = fsync_seconds  # observed under _io_lock
         self.background_error: OSError | None = None
         self._file = path.open("ab")
         self._dirty = False  # appended but not yet handed to the OS
@@ -141,8 +147,11 @@ class AOFWriter:
     def _fsync(self) -> None:
         with self._io_lock:
             if not self._file.closed:
+                started = time.perf_counter()
                 os.fsync(self._file.fileno())
                 self.fsyncs += 1
+                if self._fsync_seconds is not None:
+                    self._fsync_seconds.observe(time.perf_counter() - started)
         self._unsynced = False
 
     def _fsync_every_second(self) -> None:

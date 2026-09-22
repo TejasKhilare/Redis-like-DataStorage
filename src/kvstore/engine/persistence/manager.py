@@ -44,6 +44,7 @@ from kvstore.engine.persistence.manifest import (
     snapshot_name,
 )
 from kvstore.engine.persistence.snapshot import read_snapshot, write_snapshot
+from kvstore.observability.metrics import Histogram
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,7 @@ class Persistence:
         self._job: _RewriteJob | None = None
         self.write_error: str | None = None
         # stats
+        self.fsync_seconds = Histogram()  # across AOF generations
         self.base_size = 0
         self.records_loaded = 0
         self.truncated_bytes = 0
@@ -140,7 +142,7 @@ class Persistence:
             self.records_loaded += result.records
             self.truncated_bytes += result.truncated_bytes
 
-        self._writer = AOFWriter(self.data_dir / manifest.aofs[-1], self.fsync)
+        self._writer = AOFWriter(self.data_dir / manifest.aofs[-1], self.fsync, self.fsync_seconds)
         self._delete_unreferenced()
 
     # ------------------------------------------------------------- writes
@@ -186,7 +188,7 @@ class Persistence:
         new_aof = aof_name(generation)
 
         self._writer.close()  # flush + fsync the old generation
-        new_writer = AOFWriter(self.data_dir / new_aof, self.fsync)
+        new_writer = AOFWriter(self.data_dir / new_aof, self.fsync, self.fsync_seconds)
         self._manifest = Manifest(self._manifest.snapshot, [*self._manifest.aofs, new_aof])
         self._manifest.save(self.data_dir)
         self._writer = new_writer

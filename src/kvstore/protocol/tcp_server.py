@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import time
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AbstractContextManager, nullcontext, suppress
 from dataclasses import dataclass
 from typing import Any
 
 from kvstore.core.exceptions import KVStoreError, ProtocolError
+from kvstore.observability.metrics import SIZE_BUCKETS, Histogram
 from kvstore.protocol.resp import OK, RequestParser, encode_error, encode_reply
 
 logger = logging.getLogger(__name__)
@@ -55,7 +57,10 @@ class GroupCommit:
         self._begin = begin
         self._commit = commit
         self._waiter: asyncio.Future[None] | None = None
+        self._joined = 0
         self.commits = 0
+        self.batch_sizes = Histogram(SIZE_BUCKETS)  # batches (connections) per commit
+        self.commit_seconds = Histogram()
 
     def join(self) -> asyncio.Future[None]:
         """Join the pending commit; await the result before sending any reply."""
@@ -64,12 +69,16 @@ class GroupCommit:
             self._begin()
             self._waiter = loop.create_future()
             loop.call_soon(self._flush)
+        self._joined += 1
         return self._waiter
 
     def _flush(self) -> None:
         waiter, self._waiter = self._waiter, None
         assert waiter is not None
         self.commits += 1
+        self.batch_sizes.observe(self._joined)
+        self._joined = 0
+        started = time.perf_counter()
         try:
             self._commit()
         except Exception as exc:
@@ -77,6 +86,8 @@ class GroupCommit:
             waiter.add_done_callback(lambda f: f.exception())  # retrieved even if nobody waits
         else:
             waiter.set_result(None)
+        finally:
+            self.commit_seconds.observe(time.perf_counter() - started)
 
 
 class TCPServer:

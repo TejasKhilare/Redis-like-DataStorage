@@ -31,9 +31,17 @@ from pathlib import Path
 from typing import Any, Literal
 
 from kvstore.cluster.migration import KeyMigration, MigrationPlan
-from kvstore.core.exceptions import CommandError, InvalidArgumentError, ReadOnlyReplicaError
+from kvstore.core.codec import SnapshotRecord
+from kvstore.core.exceptions import (
+    CommandError,
+    InvalidArgumentError,
+    KVStoreError,
+    ReadOnlyReplicaError,
+)
 from kvstore.engine import Engine
 from kvstore.engine.commands import COMMANDS
+from kvstore.observability import gcpolicy
+from kvstore.observability.metrics import CommandStats
 from kvstore.protocol.resp import OK, SimpleString
 from kvstore.protocol.tcp_server import Takeover
 from kvstore.replication.primary import PrimaryReplication, ReplicationState
@@ -44,6 +52,8 @@ logger = logging.getLogger(__name__)
 
 Role = Literal["primary", "replica"]
 _STATE_FILE = "node.json"
+# Answered here rather than by the engine (for metric labels).
+_NODE_COMMANDS = frozenset({"PSYNC", "REPLCONF", "REPLICAOF", "SLAVEOF", "ROLE", "WAIT", "CLUSTER"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +73,7 @@ class ShardNode:
         listening_port: int = 0,
         data_dir: Path | None = None,
         settings: ReplicationSettings | None = None,
+        metrics: bool = True,
     ) -> None:
         self.engine = engine
         self.settings = settings or ReplicationSettings()
@@ -77,6 +88,7 @@ class ShardNode:
         self.epoch = self._load_epoch()
         self._pinger: asyncio.Task[None] | None = None
         self.migration: KeyMigration | None = None
+        self.stats = CommandStats(enabled=metrics)
         engine.replication = self.primary
         engine.extra_info = self._info_sections
 
@@ -108,6 +120,20 @@ class ShardNode:
 
     # ------------------------------------------------------------- commands
     def execute(self, command: str, *args: Any) -> Any:
+        if not self.stats.enabled:
+            return self._execute(command, args)
+        name = command.upper() if isinstance(command, str) else ""
+        label = name.lower() if name in COMMANDS or name in _NODE_COMMANDS else "unknown"
+        started = time.perf_counter()
+        try:
+            return self._execute(command, args)
+        except KVStoreError as exc:
+            self.stats.error(label, exc.prefix)
+            raise
+        finally:
+            self.stats.record(label, time.perf_counter() - started)
+
+    def _execute(self, command: str, args: tuple[Any, ...]) -> Any:
         name = command.upper() if isinstance(command, str) else ""
         if name == "PSYNC":
             return self._psync(list(args))
