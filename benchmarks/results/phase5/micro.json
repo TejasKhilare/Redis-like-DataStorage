@@ -1,0 +1,23 @@
+{
+ "aof": {
+  "v2_encode_us": 4.589,
+  "v3_encode_us": 2.833,
+  "v2_replicated_us": 6.755,
+  "v3_replicated_us": 3.609,
+  "v2_decode_us": 5.377,
+  "v3_decode_us": 7.904,
+  "v2_record_bytes": 102,
+  "v3_record_bytes": 120
+ },
+ "metrics": {
+  "kvstore_record_us": 0.57,
+  "prometheus_client_us": 3.005,
+  "node_set_metrics_on_us": 11.431,
+  "node_set_metrics_on_median_us": 14.355,
+  "node_set_metrics_off_us": 11.633,
+  "node_set_metrics_off_median_us": 13.346,
+  "node_metrics_cost_us": -0.201,
+  "node_metrics_cost_median_us": 1.01,
+  "engine_set_with_aof_us": 18.527
+ }
+}

@@ -1,0 +1,212 @@
+{
+ "summary": [
+  {
+   "pipeline": 1,
+   "cpu_us_per_request_on": 75.25,
+   "cpu_us_per_request_off": 71.5,
+   "ops_per_sec_on": 14633,
+   "ops_per_sec_off": 12872,
+   "cpu_cost_us": 3.75,
+   "cpu_cost_percent": 5.2
+  },
+  {
+   "pipeline": 16,
+   "cpu_us_per_request_on": 33.025,
+   "cpu_us_per_request_off": 30.912,
+   "ops_per_sec_on": 33356,
+   "ops_per_sec_off": 37459,
+   "cpu_cost_us": 2.113,
+   "cpu_cost_percent": 6.8
+  }
+ ],
+ "runs": {
+  "P1-on": [
+   {
+    "ops_per_sec": 14633,
+    "cpu_us_per_request": 75.1,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 16285,
+    "cpu_us_per_request": 68.6,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 13912,
+    "cpu_us_per_request": 81.65,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 14025,
+    "cpu_us_per_request": 79.85,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 14726,
+    "cpu_us_per_request": 75.25,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   }
+  ],
+  "P1-off": [
+   {
+    "ops_per_sec": 12872,
+    "cpu_us_per_request": 70.5,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 12827,
+    "cpu_us_per_request": 70.9,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 12424,
+    "cpu_us_per_request": 73.7,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 15013,
+    "cpu_us_per_request": 71.5,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 15196,
+    "cpu_us_per_request": 72.6,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   }
+  ],
+  "P16-on": [
+   {
+    "ops_per_sec": 36242,
+    "cpu_us_per_request": 32.988,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 31452,
+    "cpu_us_per_request": 33.037,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 38996,
+    "cpu_us_per_request": 33.025,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 30782,
+    "cpu_us_per_request": 32.362,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 33356,
+    "cpu_us_per_request": 37.175,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   }
+  ],
+  "P16-off": [
+   {
+    "ops_per_sec": 38935,
+    "cpu_us_per_request": 29.8,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 33212,
+    "cpu_us_per_request": 30.6,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 37459,
+    "cpu_us_per_request": 30.912,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 37485,
+    "cpu_us_per_request": 31.338,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   },
+   {
+    "ops_per_sec": 31959,
+    "cpu_us_per_request": 32.837,
+    "host_stalls": {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   }
+  ]
+ }
+}

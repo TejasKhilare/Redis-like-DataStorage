@@ -1,0 +1,1699 @@
+{
+ "clients": 48,
+ "requests": {
+  "1": 100000,
+  "16": 400000
+ },
+ "summary": [
+  {
+   "mode": "direct",
+   "pipeline": 1,
+   "shards": 1,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 12180,
+   "set_min_max": [
+    7788,
+    12500
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.089,
+    "redis-benchmark": 0.3
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 15195,
+   "get_min_max": [
+    14719,
+    17883
+   ],
+   "get_cpu_cores": {
+    "shard-1": 1.052,
+    "redis-benchmark": 0.398
+   }
+  },
+  {
+   "mode": "direct",
+   "pipeline": 1,
+   "shards": 3,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 15595,
+   "set_min_max": [
+    10082,
+    17302
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.826,
+    "shard-2": 0.84,
+    "shard-3": 0.819,
+    "redis-benchmark": 0.69
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 23190,
+   "get_min_max": [
+    19624,
+    24859
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.835,
+    "shard-2": 0.848,
+    "shard-3": 0.862,
+    "redis-benchmark": 0.967
+   }
+  },
+  {
+   "mode": "direct",
+   "pipeline": 1,
+   "shards": 6,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 18198,
+   "set_min_max": [
+    17130,
+    18625
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.581,
+    "shard-2": 0.574,
+    "shard-3": 0.572,
+    "shard-4": 0.581,
+    "shard-5": 0.581,
+    "shard-6": 0.563,
+    "redis-benchmark": 0.898
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 26432,
+   "get_min_max": [
+    24800,
+    26871
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.521,
+    "shard-2": 0.526,
+    "shard-3": 0.526,
+    "shard-4": 0.504,
+    "shard-5": 0.499,
+    "shard-6": 0.497,
+    "redis-benchmark": 1.085
+   }
+  },
+  {
+   "mode": "direct",
+   "pipeline": 16,
+   "shards": 1,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 19376,
+   "set_min_max": [
+    19115,
+    21984
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.067,
+    "redis-benchmark": 0.057
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 49401,
+   "get_min_max": [
+    45096,
+    49981
+   ],
+   "get_cpu_cores": {
+    "shard-1": 1.082,
+    "redis-benchmark": 0.108
+   }
+  },
+  {
+   "mode": "direct",
+   "pipeline": 16,
+   "shards": 3,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 35372,
+   "set_min_max": [
+    33707,
+    44891
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.067,
+    "shard-2": 1.054,
+    "shard-3": 1.058,
+    "redis-benchmark": 0.167
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 89014,
+   "get_min_max": [
+    88095,
+    91892
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.993,
+    "shard-2": 0.985,
+    "shard-3": 0.971,
+    "redis-benchmark": 0.283
+   }
+  },
+  {
+   "mode": "direct",
+   "pipeline": 16,
+   "shards": 6,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 51216,
+   "set_min_max": [
+    41838,
+    52331
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.685,
+    "shard-2": 0.68,
+    "shard-3": 0.661,
+    "shard-4": 0.67,
+    "shard-5": 0.655,
+    "shard-6": 0.683,
+    "redis-benchmark": 0.216
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 96200,
+   "get_min_max": [
+    62236,
+    111310
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.668,
+    "shard-2": 0.65,
+    "shard-3": 0.625,
+    "shard-4": 0.65,
+    "shard-5": 0.631,
+    "shard-6": 0.618,
+    "redis-benchmark": 0.368
+   }
+  },
+  {
+   "mode": "router",
+   "pipeline": 1,
+   "shards": 1,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 4533,
+   "set_min_max": [
+    3801,
+    4701
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.605,
+    "router": 1.107,
+    "redis-benchmark": 0.201
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 4810,
+   "get_min_max": [
+    4515,
+    5014
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.427,
+    "router": 1.09,
+    "redis-benchmark": 0.204
+   }
+  },
+  {
+   "mode": "router",
+   "pipeline": 1,
+   "shards": 3,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 3577,
+   "set_min_max": [
+    3126,
+    3804
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.292,
+    "shard-2": 0.286,
+    "shard-3": 0.353,
+    "router": 1.068,
+    "redis-benchmark": 0.192
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 3924,
+   "get_min_max": [
+    3278,
+    4009
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.221,
+    "shard-2": 0.224,
+    "shard-3": 0.265,
+    "router": 1.081,
+    "redis-benchmark": 0.2
+   }
+  },
+  {
+   "mode": "router",
+   "pipeline": 1,
+   "shards": 6,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 3120,
+   "set_min_max": [
+    3082,
+    3378
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.176,
+    "shard-2": 0.162,
+    "shard-3": 0.183,
+    "shard-4": 0.188,
+    "shard-5": 0.177,
+    "shard-6": 0.149,
+    "router": 1.107,
+    "redis-benchmark": 0.186
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 3056,
+   "get_min_max": [
+    2683,
+    3373
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.137,
+    "shard-2": 0.123,
+    "shard-3": 0.141,
+    "shard-4": 0.147,
+    "shard-5": 0.139,
+    "shard-6": 0.115,
+    "router": 1.072,
+    "redis-benchmark": 0.191
+   }
+  },
+  {
+   "mode": "router",
+   "pipeline": 16,
+   "shards": 1,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 10583,
+   "set_min_max": [
+    9174,
+    13952
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.594,
+    "router": 0.58,
+    "redis-benchmark": 0.035
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 18321,
+   "get_min_max": [
+    17510,
+    23105
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.459,
+    "router": 0.815,
+    "redis-benchmark": 0.054
+   }
+  },
+  {
+   "mode": "router",
+   "pipeline": 16,
+   "shards": 3,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 15066,
+   "set_min_max": [
+    14160,
+    15993
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.31,
+    "shard-2": 0.306,
+    "shard-3": 0.377,
+    "router": 0.786,
+    "redis-benchmark": 0.042
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 15110,
+   "get_min_max": [
+    10748,
+    18232
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.231,
+    "shard-2": 0.218,
+    "shard-3": 0.277,
+    "router": 1.072,
+    "redis-benchmark": 0.073
+   }
+  },
+  {
+   "mode": "router",
+   "pipeline": 16,
+   "shards": 6,
+   "set_failed_attempts": 0,
+   "set_ops_per_sec": 10530,
+   "set_min_max": [
+    10038,
+    11490
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.179,
+    "shard-2": 0.176,
+    "shard-3": 0.19,
+    "shard-4": 0.183,
+    "shard-5": 0.184,
+    "shard-6": 0.171,
+    "router": 0.983,
+    "redis-benchmark": 0.044
+   },
+   "get_failed_attempts": 0,
+   "get_ops_per_sec": 12246,
+   "get_min_max": [
+    10871,
+    13394
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.125,
+    "shard-2": 0.114,
+    "shard-3": 0.143,
+    "shard-4": 0.131,
+    "shard-5": 0.134,
+    "shard-6": 0.117,
+    "router": 1.025,
+    "redis-benchmark": 0.058
+   }
+  }
+ ],
+ "runs": [
+  {
+   "shards": 1,
+   "mode": "router",
+   "pipeline": 1,
+   "set_ops_per_sec": 3801,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.487,
+    "router": 1.051,
+    "redis-benchmark": 0.175
+   },
+   "get_ops_per_sec": 4515,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.386,
+    "router": 1.071,
+    "redis-benchmark": 0.197
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "router",
+   "pipeline": 1,
+   "set_ops_per_sec": 3577,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.292,
+    "shard-2": 0.286,
+    "shard-3": 0.353,
+    "router": 1.068,
+    "redis-benchmark": 0.192
+   },
+   "get_ops_per_sec": 3924,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.221,
+    "shard-2": 0.224,
+    "shard-3": 0.265,
+    "router": 1.081,
+    "redis-benchmark": 0.2
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "router",
+   "pipeline": 1,
+   "set_ops_per_sec": 3082,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.171,
+    "shard-2": 0.156,
+    "shard-3": 0.19,
+    "shard-4": 0.181,
+    "shard-5": 0.181,
+    "shard-6": 0.166,
+    "router": 1.087,
+    "redis-benchmark": 0.186
+   },
+   "get_ops_per_sec": 3373,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.134,
+    "shard-2": 0.124,
+    "shard-3": 0.156,
+    "shard-4": 0.148,
+    "shard-5": 0.151,
+    "shard-6": 0.137,
+    "router": 1.077,
+    "redis-benchmark": 0.19
+   }
+  },
+  {
+   "shards": 1,
+   "mode": "router",
+   "pipeline": 16,
+   "set_ops_per_sec": 10583,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.594,
+    "router": 0.58,
+    "redis-benchmark": 0.035
+   },
+   "get_ops_per_sec": 17510,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.434,
+    "router": 0.796,
+    "redis-benchmark": 0.051
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "router",
+   "pipeline": 16,
+   "set_ops_per_sec": 15993,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.365,
+    "shard-2": 0.346,
+    "shard-3": 0.435,
+    "router": 0.922,
+    "redis-benchmark": 0.048
+   },
+   "get_ops_per_sec": 15110,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.231,
+    "shard-2": 0.218,
+    "shard-3": 0.277,
+    "router": 1.072,
+    "redis-benchmark": 0.073
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "router",
+   "pipeline": 16,
+   "set_ops_per_sec": 10530,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.179,
+    "shard-2": 0.176,
+    "shard-3": 0.19,
+    "shard-4": 0.183,
+    "shard-5": 0.184,
+    "shard-6": 0.171,
+    "router": 0.983,
+    "redis-benchmark": 0.044
+   },
+   "get_ops_per_sec": 10871,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.129,
+    "shard-2": 0.124,
+    "shard-3": 0.118,
+    "shard-4": 0.12,
+    "shard-5": 0.129,
+    "shard-6": 0.116,
+    "router": 1.062,
+    "redis-benchmark": 0.065
+   }
+  },
+  {
+   "shards": 1,
+   "mode": "direct",
+   "pipeline": 1,
+   "set_ops_per_sec": 12500,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.085,
+    "redis-benchmark": 0.306
+   },
+   "get_ops_per_sec": 17883,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 1.105,
+    "redis-benchmark": 0.451
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "direct",
+   "pipeline": 1,
+   "set_ops_per_sec": 17302,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.951,
+    "shard-2": 0.961,
+    "shard-3": 0.918,
+    "redis-benchmark": 0.768
+   },
+   "get_ops_per_sec": 19624,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.88,
+    "shard-2": 0.882,
+    "shard-3": 0.853,
+    "redis-benchmark": 0.953
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "direct",
+   "pipeline": 1,
+   "set_ops_per_sec": 18198,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.581,
+    "shard-2": 0.574,
+    "shard-3": 0.572,
+    "shard-4": 0.581,
+    "shard-5": 0.581,
+    "shard-6": 0.563,
+    "redis-benchmark": 0.898
+   },
+   "get_ops_per_sec": 26871,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.546,
+    "shard-2": 0.53,
+    "shard-3": 0.54,
+    "shard-4": 0.527,
+    "shard-5": 0.525,
+    "shard-6": 0.533,
+    "redis-benchmark": 1.129
+   }
+  },
+  {
+   "shards": 1,
+   "mode": "direct",
+   "pipeline": 16,
+   "set_ops_per_sec": 19115,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.109,
+    "redis-benchmark": 0.056
+   },
+   "get_ops_per_sec": 49981,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 1.098,
+    "redis-benchmark": 0.107
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "direct",
+   "pipeline": 16,
+   "set_ops_per_sec": 44891,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.075,
+    "shard-2": 1.085,
+    "shard-3": 1.093,
+    "redis-benchmark": 0.171
+   },
+   "get_ops_per_sec": 91892,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 1.082,
+    "shard-2": 1.064,
+    "shard-3": 1.087,
+    "redis-benchmark": 0.303
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "direct",
+   "pipeline": 16,
+   "set_ops_per_sec": 52331,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.69,
+    "shard-2": 0.693,
+    "shard-3": 0.682,
+    "shard-4": 0.688,
+    "shard-5": 0.692,
+    "shard-6": 0.688,
+    "redis-benchmark": 0.217
+   },
+   "get_ops_per_sec": 111310,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.648,
+    "shard-2": 0.65,
+    "shard-3": 0.625,
+    "shard-4": 0.638,
+    "shard-5": 0.648,
+    "shard-6": 0.638,
+    "redis-benchmark": 0.401
+   }
+  },
+  {
+   "shards": 1,
+   "mode": "router",
+   "pipeline": 1,
+   "set_ops_per_sec": 4533,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.605,
+    "router": 1.107,
+    "redis-benchmark": 0.201
+   },
+   "get_ops_per_sec": 5014,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.422,
+    "router": 1.095,
+    "redis-benchmark": 0.208
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "router",
+   "pipeline": 1,
+   "set_ops_per_sec": 3126,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.292,
+    "shard-2": 0.27,
+    "shard-3": 0.309,
+    "router": 1.101,
+    "redis-benchmark": 0.198
+   },
+   "get_ops_per_sec": 3278,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.215,
+    "shard-2": 0.203,
+    "shard-3": 0.226,
+    "router": 1.09,
+    "redis-benchmark": 0.197
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "router",
+   "pipeline": 1,
+   "set_ops_per_sec": 3120,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.176,
+    "shard-2": 0.162,
+    "shard-3": 0.183,
+    "shard-4": 0.188,
+    "shard-5": 0.177,
+    "shard-6": 0.149,
+    "router": 1.107,
+    "redis-benchmark": 0.186
+   },
+   "get_ops_per_sec": 3056,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.137,
+    "shard-2": 0.123,
+    "shard-3": 0.141,
+    "shard-4": 0.147,
+    "shard-5": 0.139,
+    "shard-6": 0.115,
+    "router": 1.072,
+    "redis-benchmark": 0.191
+   }
+  },
+  {
+   "shards": 1,
+   "mode": "router",
+   "pipeline": 16,
+   "set_ops_per_sec": 13952,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.583,
+    "router": 0.546,
+    "redis-benchmark": 0.036
+   },
+   "get_ops_per_sec": 23105,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.402,
+    "router": 0.758,
+    "redis-benchmark": 0.051
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "router",
+   "pipeline": 16,
+   "set_ops_per_sec": 15066,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.31,
+    "shard-2": 0.306,
+    "shard-3": 0.377,
+    "router": 0.786,
+    "redis-benchmark": 0.042
+   },
+   "get_ops_per_sec": 18232,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.256,
+    "shard-2": 0.249,
+    "shard-3": 0.308,
+    "router": 1.087,
+    "redis-benchmark": 0.077
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "router",
+   "pipeline": 16,
+   "set_ops_per_sec": 11490,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.167,
+    "shard-2": 0.165,
+    "shard-3": 0.178,
+    "shard-4": 0.18,
+    "shard-5": 0.171,
+    "shard-6": 0.162,
+    "router": 0.904,
+    "redis-benchmark": 0.041
+   },
+   "get_ops_per_sec": 13394,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.128,
+    "shard-2": 0.126,
+    "shard-3": 0.124,
+    "shard-4": 0.135,
+    "shard-5": 0.121,
+    "shard-6": 0.128,
+    "router": 0.99,
+    "redis-benchmark": 0.058
+   }
+  },
+  {
+   "shards": 1,
+   "mode": "direct",
+   "pipeline": 1,
+   "set_ops_per_sec": 7788,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.086,
+    "redis-benchmark": 0.268
+   },
+   "get_ops_per_sec": 15195,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 1.052,
+    "redis-benchmark": 0.398
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "direct",
+   "pipeline": 1,
+   "set_ops_per_sec": 15595,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.826,
+    "shard-2": 0.84,
+    "shard-3": 0.819,
+    "redis-benchmark": 0.69
+   },
+   "get_ops_per_sec": 24859,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.829,
+    "shard-2": 0.837,
+    "shard-3": 0.866,
+    "redis-benchmark": 0.947
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "direct",
+   "pipeline": 1,
+   "set_ops_per_sec": 17130,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.588,
+    "shard-2": 0.55,
+    "shard-3": 0.552,
+    "shard-4": 0.549,
+    "shard-5": 0.549,
+    "shard-6": 0.544,
+    "redis-benchmark": 0.856
+   },
+   "get_ops_per_sec": 26432,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.521,
+    "shard-2": 0.526,
+    "shard-3": 0.526,
+    "shard-4": 0.504,
+    "shard-5": 0.499,
+    "shard-6": 0.497,
+    "redis-benchmark": 1.085
+   }
+  },
+  {
+   "shards": 1,
+   "mode": "direct",
+   "pipeline": 16,
+   "set_ops_per_sec": 21984,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.076,
+    "redis-benchmark": 0.058
+   },
+   "get_ops_per_sec": 49401,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 1.082,
+    "redis-benchmark": 0.108
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "direct",
+   "pipeline": 16,
+   "set_ops_per_sec": 35372,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.067,
+    "shard-2": 1.054,
+    "shard-3": 1.058,
+    "redis-benchmark": 0.167
+   },
+   "get_ops_per_sec": 89014,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.993,
+    "shard-2": 0.985,
+    "shard-3": 0.971,
+    "redis-benchmark": 0.283
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "direct",
+   "pipeline": 16,
+   "set_ops_per_sec": 51216,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.685,
+    "shard-2": 0.68,
+    "shard-3": 0.661,
+    "shard-4": 0.67,
+    "shard-5": 0.655,
+    "shard-6": 0.683,
+    "redis-benchmark": 0.216
+   },
+   "get_ops_per_sec": 96200,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.668,
+    "shard-2": 0.65,
+    "shard-3": 0.625,
+    "shard-4": 0.65,
+    "shard-5": 0.631,
+    "shard-6": 0.618,
+    "redis-benchmark": 0.368
+   }
+  },
+  {
+   "shards": 1,
+   "mode": "router",
+   "pipeline": 1,
+   "set_ops_per_sec": 4701,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.565,
+    "router": 1.073,
+    "redis-benchmark": 0.19
+   },
+   "get_ops_per_sec": 4810,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.427,
+    "router": 1.09,
+    "redis-benchmark": 0.204
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "router",
+   "pipeline": 1,
+   "set_ops_per_sec": 3804,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.297,
+    "shard-2": 0.283,
+    "shard-3": 0.338,
+    "router": 1.074,
+    "redis-benchmark": 0.198
+   },
+   "get_ops_per_sec": 4009,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.237,
+    "shard-2": 0.228,
+    "shard-3": 0.276,
+    "router": 1.085,
+    "redis-benchmark": 0.198
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "router",
+   "pipeline": 1,
+   "set_ops_per_sec": 3378,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.176,
+    "shard-2": 0.164,
+    "shard-3": 0.199,
+    "shard-4": 0.192,
+    "shard-5": 0.187,
+    "shard-6": 0.161,
+    "router": 1.068,
+    "redis-benchmark": 0.181
+   },
+   "get_ops_per_sec": 2683,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.12,
+    "shard-2": 0.109,
+    "shard-3": 0.135,
+    "shard-4": 0.13,
+    "shard-5": 0.13,
+    "shard-6": 0.107,
+    "router": 1.08,
+    "redis-benchmark": 0.18
+   }
+  },
+  {
+   "shards": 1,
+   "mode": "router",
+   "pipeline": 16,
+   "set_ops_per_sec": 9174,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.555,
+    "router": 0.54,
+    "redis-benchmark": 0.036
+   },
+   "get_ops_per_sec": 18321,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.459,
+    "router": 0.815,
+    "redis-benchmark": 0.054
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "router",
+   "pipeline": 16,
+   "set_ops_per_sec": 14160,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.353,
+    "shard-2": 0.34,
+    "shard-3": 0.43,
+    "router": 0.923,
+    "redis-benchmark": 0.053
+   },
+   "get_ops_per_sec": 10748,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.188,
+    "shard-2": 0.178,
+    "shard-3": 0.226,
+    "router": 1.065,
+    "redis-benchmark": 0.072
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "router",
+   "pipeline": 16,
+   "set_ops_per_sec": 10038,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.159,
+    "shard-2": 0.158,
+    "shard-3": 0.179,
+    "shard-4": 0.171,
+    "shard-5": 0.173,
+    "shard-6": 0.151,
+    "router": 0.976,
+    "redis-benchmark": 0.042
+   },
+   "get_ops_per_sec": 12246,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.125,
+    "shard-2": 0.114,
+    "shard-3": 0.143,
+    "shard-4": 0.131,
+    "shard-5": 0.134,
+    "shard-6": 0.117,
+    "router": 1.025,
+    "redis-benchmark": 0.058
+   }
+  },
+  {
+   "shards": 1,
+   "mode": "direct",
+   "pipeline": 1,
+   "set_ops_per_sec": 12180,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.089,
+    "redis-benchmark": 0.3
+   },
+   "get_ops_per_sec": 14719,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 1.086,
+    "redis-benchmark": 0.409
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "direct",
+   "pipeline": 1,
+   "set_ops_per_sec": 10082,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.911,
+    "shard-2": 0.895,
+    "shard-3": 0.893,
+    "redis-benchmark": 0.724
+   },
+   "get_ops_per_sec": 23190,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.835,
+    "shard-2": 0.848,
+    "shard-3": 0.862,
+    "redis-benchmark": 0.967
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "direct",
+   "pipeline": 1,
+   "set_ops_per_sec": 18625,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.583,
+    "shard-2": 0.563,
+    "shard-3": 0.559,
+    "shard-4": 0.556,
+    "shard-5": 0.572,
+    "shard-6": 0.558,
+    "redis-benchmark": 0.874
+   },
+   "get_ops_per_sec": 24800,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.513,
+    "shard-2": 0.534,
+    "shard-3": 0.527,
+    "shard-4": 0.506,
+    "shard-5": 0.529,
+    "shard-6": 0.517,
+    "redis-benchmark": 1.137
+   }
+  },
+  {
+   "shards": 1,
+   "mode": "direct",
+   "pipeline": 16,
+   "set_ops_per_sec": 19376,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.067,
+    "redis-benchmark": 0.057
+   },
+   "get_ops_per_sec": 45096,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 1.092,
+    "redis-benchmark": 0.107
+   }
+  },
+  {
+   "shards": 3,
+   "mode": "direct",
+   "pipeline": 16,
+   "set_ops_per_sec": 33707,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 1.068,
+    "shard-2": 1.073,
+    "shard-3": 1.067,
+    "redis-benchmark": 0.172
+   },
+   "get_ops_per_sec": 88095,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 1.047,
+    "shard-2": 1.043,
+    "shard-3": 1.047,
+    "redis-benchmark": 0.311
+   }
+  },
+  {
+   "shards": 6,
+   "mode": "direct",
+   "pipeline": 16,
+   "set_ops_per_sec": 41838,
+   "set_failures": [],
+   "set_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "set_cpu_cores": {
+    "shard-1": 0.682,
+    "shard-2": 0.673,
+    "shard-3": 0.667,
+    "shard-4": 0.674,
+    "shard-5": 0.667,
+    "shard-6": 0.674,
+    "redis-benchmark": 0.207
+   },
+   "get_ops_per_sec": 62236,
+   "get_failures": [],
+   "get_host_stalls": [
+    {
+     "count": 0,
+     "max_ms": 0.0,
+     "total_ms": 0
+    }
+   ],
+   "get_cpu_cores": {
+    "shard-1": 0.617,
+    "shard-2": 0.653,
+    "shard-3": 0.637,
+    "shard-4": 0.652,
+    "shard-5": 0.664,
+    "shard-6": 0.652,
+    "redis-benchmark": 0.359
+   }
+  }
+ ]
+}

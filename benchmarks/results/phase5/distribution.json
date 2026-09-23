@@ -1,0 +1,200 @@
+{
+ "keys": 1000000,
+ "results": [
+  {
+   "groups": 3,
+   "virtual_nodes": 10,
+   "ring_points": 30,
+   "default_ids": {
+    "keys": {
+     "shard-1": 218684,
+     "shard-2": 350406,
+     "shard-3": 430910
+    },
+    "max_over_mean": 1.2927,
+    "min_over_mean": 0.6561,
+    "cov": 0.2624
+   },
+   "random_ids": {
+    "clusters": 200,
+    "max_over_mean_median": 1.2467,
+    "max_over_mean_p95": 1.5656,
+    "cov_median": 0.2113,
+    "cov_p95": 0.4322
+   },
+   "add_one_group": {
+    "ideal_share_moved": 0.25,
+    "moved_default_ids": 0.274,
+    "moved_median": 0.2494,
+    "moved_min": 0.1165,
+    "moved_max": 0.4341,
+    "moved_only_to_the_new_group": true
+   },
+   "lookups_per_sec": 762915
+  },
+  {
+   "groups": 3,
+   "virtual_nodes": 100,
+   "ring_points": 300,
+   "default_ids": {
+    "keys": {
+     "shard-1": 310572,
+     "shard-2": 291913,
+     "shard-3": 397515
+    },
+    "max_over_mean": 1.1925,
+    "min_over_mean": 0.8757,
+    "cov": 0.1381
+   },
+   "random_ids": {
+    "clusters": 200,
+    "max_over_mean_median": 1.0692,
+    "max_over_mean_p95": 1.1887,
+    "cov_median": 0.0612,
+    "cov_p95": 0.1352
+   },
+   "add_one_group": {
+    "ideal_share_moved": 0.25,
+    "moved_default_ids": 0.2335,
+    "moved_median": 0.2479,
+    "moved_min": 0.1928,
+    "moved_max": 0.3042,
+    "moved_only_to_the_new_group": true
+   },
+   "lookups_per_sec": 556931
+  },
+  {
+   "groups": 3,
+   "virtual_nodes": 500,
+   "ring_points": 1500,
+   "default_ids": {
+    "keys": {
+     "shard-1": 338026,
+     "shard-2": 329230,
+     "shard-3": 332744
+    },
+    "max_over_mean": 1.0141,
+    "min_over_mean": 0.9877,
+    "cov": 0.0108
+   },
+   "random_ids": {
+    "clusters": 200,
+    "max_over_mean_median": 1.0355,
+    "max_over_mean_p95": 1.0826,
+    "cov_median": 0.0289,
+    "cov_p95": 0.0649
+   },
+   "add_one_group": {
+    "ideal_share_moved": 0.25,
+    "moved_default_ids": 0.2611,
+    "moved_median": 0.2499,
+    "moved_min": 0.2223,
+    "moved_max": 0.2841,
+    "moved_only_to_the_new_group": true
+   },
+   "lookups_per_sec": 673689
+  },
+  {
+   "groups": 6,
+   "virtual_nodes": 10,
+   "ring_points": 60,
+   "default_ids": {
+    "keys": {
+     "shard-1": 121292,
+     "shard-2": 224511,
+     "shard-3": 159377,
+     "shard-4": 186075,
+     "shard-5": 127506,
+     "shard-6": 181239
+    },
+    "max_over_mean": 1.3471,
+    "min_over_mean": 0.7278,
+    "cov": 0.2133
+   },
+   "random_ids": {
+    "clusters": 200,
+    "max_over_mean_median": 1.3915,
+    "max_over_mean_p95": 1.7995,
+    "cov_median": 0.26,
+    "cov_p95": 0.4151
+   },
+   "add_one_group": {
+    "ideal_share_moved": 0.1429,
+    "moved_default_ids": 0.1568,
+    "moved_median": 0.1366,
+    "moved_min": 0.0716,
+    "moved_max": 0.262,
+    "moved_only_to_the_new_group": true
+   },
+   "lookups_per_sec": 700766
+  },
+  {
+   "groups": 6,
+   "virtual_nodes": 100,
+   "ring_points": 600,
+   "default_ids": {
+    "keys": {
+     "shard-1": 158445,
+     "shard-2": 159609,
+     "shard-3": 183190,
+     "shard-4": 169903,
+     "shard-5": 174070,
+     "shard-6": 154783
+    },
+    "max_over_mean": 1.0991,
+    "min_over_mean": 0.9287,
+    "cov": 0.0598
+   },
+   "random_ids": {
+    "clusters": 200,
+    "max_over_mean_median": 1.1238,
+    "max_over_mean_p95": 1.229,
+    "cov_median": 0.088,
+    "cov_p95": 0.1424
+   },
+   "add_one_group": {
+    "ideal_share_moved": 0.1429,
+    "moved_default_ids": 0.12,
+    "moved_median": 0.143,
+    "moved_min": 0.1091,
+    "moved_max": 0.1799,
+    "moved_only_to_the_new_group": true
+   },
+   "lookups_per_sec": 694350
+  },
+  {
+   "groups": 6,
+   "virtual_nodes": 500,
+   "ring_points": 3000,
+   "default_ids": {
+    "keys": {
+     "shard-1": 163173,
+     "shard-2": 175456,
+     "shard-3": 151485,
+     "shard-4": 163387,
+     "shard-5": 180548,
+     "shard-6": 165951
+    },
+    "max_over_mean": 1.0833,
+    "min_over_mean": 0.9089,
+    "cov": 0.0561
+   },
+   "random_ids": {
+    "clusters": 200,
+    "max_over_mean_median": 1.057,
+    "max_over_mean_p95": 1.1007,
+    "cov_median": 0.0388,
+    "cov_p95": 0.058
+   },
+   "add_one_group": {
+    "ideal_share_moved": 0.1429,
+    "moved_default_ids": 0.1304,
+    "moved_median": 0.1426,
+    "moved_min": 0.1255,
+    "moved_max": 0.1576,
+    "moved_only_to_the_new_group": true
+   },
+   "lookups_per_sec": 287548
+  }
+ ]
+}

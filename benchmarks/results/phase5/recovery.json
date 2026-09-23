@@ -1,0 +1,902 @@
+{
+ "value_bytes": 100,
+ "restarts": 3,
+ "results": [
+  {
+   "writes": 125000,
+   "keys": 125000,
+   "case": "aof",
+   "kvstore": {
+    "load_ms": 3378.0,
+    "aof_records_loaded": 125000,
+    "snapshot_keys_loaded": 0,
+    "aof_bytes": 18788890,
+    "snapshot_bytes": 0,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 4.458,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 179.0,
+    "aof_bytes": 17038913,
+    "base_bytes": 88,
+    "keys": 125000,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 0.204,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 125000,
+   "keys": 125000,
+   "case": "snapshot",
+   "kvstore": {
+    "load_ms": 667.7,
+    "aof_records_loaded": 0,
+    "snapshot_keys_loaded": 125000,
+    "aof_bytes": 0,
+    "snapshot_bytes": 15763919,
+    "bgrewriteaof_reply_ms": 12.2,
+    "spawn_to_ready_s": 1.527,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 193.0,
+    "aof_bytes": 0,
+    "base_bytes": 3013987,
+    "keys": 125000,
+    "bgrewriteaof_reply_ms": 8.2,
+    "spawn_to_ready_s": 0.252,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 125000,
+   "keys": 12500,
+   "case": "overwrites_aof",
+   "kvstore": {
+    "load_ms": 3408.7,
+    "aof_records_loaded": 125000,
+    "snapshot_keys_loaded": 0,
+    "aof_bytes": 18638900,
+    "snapshot_bytes": 0,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 4.246,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 151.0,
+    "aof_bytes": 16888923,
+    "base_bytes": 88,
+    "keys": 12500,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 0.204,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 125000,
+   "keys": 12500,
+   "case": "overwrites_snapshot",
+   "kvstore": {
+    "load_ms": 66.0,
+    "aof_records_loaded": 0,
+    "snapshot_keys_loaded": 12500,
+    "aof_bytes": 0,
+    "snapshot_bytes": 1563919,
+    "bgrewriteaof_reply_ms": 14.1,
+    "spawn_to_ready_s": 0.923,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 31.0,
+    "aof_bytes": 0,
+    "base_bytes": 288984,
+    "keys": 12500,
+    "bgrewriteaof_reply_ms": 6.3,
+    "spawn_to_ready_s": 0.103,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 250000,
+   "keys": 250000,
+   "case": "aof",
+   "kvstore": {
+    "load_ms": 6082.5,
+    "aof_records_loaded": 250000,
+    "snapshot_keys_loaded": 0,
+    "aof_bytes": 37788890,
+    "snapshot_bytes": 0,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 7.056,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 436.0,
+    "aof_bytes": 34288913,
+    "base_bytes": 88,
+    "keys": 250000,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 0.509,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 250000,
+   "keys": 250000,
+   "case": "snapshot",
+   "kvstore": {
+    "load_ms": 1907.6,
+    "aof_records_loaded": 0,
+    "snapshot_keys_loaded": 250000,
+    "aof_bytes": 0,
+    "snapshot_bytes": 31638919,
+    "bgrewriteaof_reply_ms": 14.4,
+    "spawn_to_ready_s": 2.734,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 405.0,
+    "aof_bytes": 0,
+    "base_bytes": 6138987,
+    "keys": 250000,
+    "bgrewriteaof_reply_ms": 8.0,
+    "spawn_to_ready_s": 0.513,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 250000,
+   "keys": 25000,
+   "case": "overwrites_aof",
+   "kvstore": {
+    "load_ms": 5287.1,
+    "aof_records_loaded": 250000,
+    "snapshot_keys_loaded": 0,
+    "aof_bytes": 37388900,
+    "snapshot_bytes": 0,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 6.348,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 298.0,
+    "aof_bytes": 33888923,
+    "base_bytes": 88,
+    "keys": 25000,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 0.405,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 250000,
+   "keys": 25000,
+   "case": "overwrites_snapshot",
+   "kvstore": {
+    "load_ms": 127.8,
+    "aof_records_loaded": 0,
+    "snapshot_keys_loaded": 25000,
+    "aof_bytes": 0,
+    "snapshot_bytes": 3138919,
+    "bgrewriteaof_reply_ms": 11.2,
+    "spawn_to_ready_s": 0.83,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 32.0,
+    "aof_bytes": 0,
+    "base_bytes": 588987,
+    "keys": 25000,
+    "bgrewriteaof_reply_ms": 8.1,
+    "spawn_to_ready_s": 0.103,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 500000,
+   "keys": 500000,
+   "case": "aof",
+   "kvstore": {
+    "load_ms": 10266.8,
+    "aof_records_loaded": 500000,
+    "snapshot_keys_loaded": 0,
+    "aof_bytes": 75788890,
+    "snapshot_bytes": 0,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 10.971,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 854.0,
+    "aof_bytes": 68788913,
+    "base_bytes": 88,
+    "keys": 500000,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 0.918,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 500000,
+   "keys": 500000,
+   "case": "snapshot",
+   "kvstore": {
+    "load_ms": 2864.3,
+    "aof_records_loaded": 0,
+    "snapshot_keys_loaded": 500000,
+    "aof_bytes": 0,
+    "snapshot_bytes": 63388919,
+    "bgrewriteaof_reply_ms": 16.7,
+    "spawn_to_ready_s": 3.64,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 522.0,
+    "aof_bytes": 0,
+    "base_bytes": 12388987,
+    "keys": 500000,
+    "bgrewriteaof_reply_ms": 9.2,
+    "spawn_to_ready_s": 0.6,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 500000,
+   "keys": 50000,
+   "case": "overwrites_aof",
+   "kvstore": {
+    "load_ms": 10957.9,
+    "aof_records_loaded": 500000,
+    "snapshot_keys_loaded": 0,
+    "aof_bytes": 74888900,
+    "snapshot_bytes": 0,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 11.843,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 707.0,
+    "aof_bytes": 67888923,
+    "base_bytes": 88,
+    "keys": 50000,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 0.711,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 500000,
+   "keys": 50000,
+   "case": "overwrites_snapshot",
+   "kvstore": {
+    "load_ms": 217.4,
+    "aof_records_loaded": 0,
+    "snapshot_keys_loaded": 50000,
+    "aof_bytes": 0,
+    "snapshot_bytes": 6288919,
+    "bgrewriteaof_reply_ms": 11.5,
+    "spawn_to_ready_s": 0.937,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 56.0,
+    "aof_bytes": 0,
+    "base_bytes": 1188987,
+    "keys": 50000,
+    "bgrewriteaof_reply_ms": 9.2,
+    "spawn_to_ready_s": 0.101,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 1000000,
+   "keys": 1000000,
+   "case": "aof",
+   "kvstore": {
+    "load_ms": 23822.5,
+    "aof_records_loaded": 1000000,
+    "snapshot_keys_loaded": 0,
+    "aof_bytes": 151788890,
+    "snapshot_bytes": 0,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 24.528,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 1587.0,
+    "aof_bytes": 137788913,
+    "base_bytes": 88,
+    "keys": 1000000,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 1.619,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 1000000,
+   "keys": 1000000,
+   "case": "snapshot",
+   "kvstore": {
+    "load_ms": 7198.2,
+    "aof_records_loaded": 0,
+    "snapshot_keys_loaded": 1000000,
+    "aof_bytes": 0,
+    "snapshot_bytes": 126888919,
+    "bgrewriteaof_reply_ms": 32.9,
+    "spawn_to_ready_s": 7.953,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 1047.0,
+    "aof_bytes": 0,
+    "base_bytes": 24888987,
+    "keys": 1000000,
+    "bgrewriteaof_reply_ms": 10.4,
+    "spawn_to_ready_s": 1.15,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 1000000,
+   "keys": 100000,
+   "case": "overwrites_aof",
+   "kvstore": {
+    "load_ms": 23590.0,
+    "aof_records_loaded": 1000000,
+    "snapshot_keys_loaded": 0,
+    "aof_bytes": 149888900,
+    "snapshot_bytes": 0,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 24.263,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 1237.0,
+    "aof_bytes": 135888923,
+    "base_bytes": 88,
+    "keys": 100000,
+    "bgrewriteaof_reply_ms": null,
+    "spawn_to_ready_s": 1.325,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  },
+  {
+   "writes": 1000000,
+   "keys": 100000,
+   "case": "overwrites_snapshot",
+   "kvstore": {
+    "load_ms": 480.9,
+    "aof_records_loaded": 0,
+    "snapshot_keys_loaded": 100000,
+    "aof_bytes": 0,
+    "snapshot_bytes": 12588919,
+    "bgrewriteaof_reply_ms": 14.6,
+    "spawn_to_ready_s": 1.121,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   },
+   "redis": {
+    "load_ms": 106.0,
+    "aof_bytes": 0,
+    "base_bytes": 2388987,
+    "keys": 100000,
+    "bgrewriteaof_reply_ms": 6.4,
+    "spawn_to_ready_s": 0.208,
+    "host_stalls": [
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     },
+     {
+      "count": 0,
+      "max_ms": 0.0,
+      "total_ms": 0
+     }
+    ]
+   }
+  }
+ ]
+}

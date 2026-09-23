@@ -1,0 +1,6 @@
+{"code": "before", "rep": 1, "result": {"writes": 500000, "reply_ms": 73.6, "host_stalls": {"count": 0, "max_ms": 0.0, "total_ms": 0}}}
+{"code": "after", "rep": 1, "result": {"writes": 500000, "reply_ms": 37.7, "host_stalls": {"count": 0, "max_ms": 0.0, "total_ms": 0}}}
+{"code": "before", "rep": 2, "result": {"writes": 500000, "reply_ms": 668.5, "host_stalls": {"count": 0, "max_ms": 0.0, "total_ms": 0}}}
+{"code": "after", "rep": 2, "result": {"writes": 500000, "reply_ms": 31.6, "host_stalls": {"count": 0, "max_ms": 0.0, "total_ms": 0}}}
+{"code": "before", "rep": 3, "result": {"writes": 500000, "reply_ms": 46.9, "host_stalls": {"count": 0, "max_ms": 0.0, "total_ms": 0}}}
+{"code": "after", "rep": 3, "result": {"writes": 500000, "reply_ms": 38.3, "host_stalls": {"count": 0, "max_ms": 0.0, "total_ms": 0}}}

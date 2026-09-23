@@ -1,0 +1,177 @@
+[
+ {
+  "keys": 10000,
+  "kind": "string",
+  "reps": 3,
+  "pause_ms": 3.02,
+  "pause_ms_max": 3.08,
+  "background_write_ms": 34.1,
+  "snapshot_bytes": 970029,
+  "stall_ms_oneshot": 15.6,
+  "stall_ms_incremental": 8.25,
+  "stall_ms_incremental_max": 8.77,
+  "rewrite_ms_incremental": 57.8,
+  "stalls_ms_incremental": [
+   8.77,
+   5.65,
+   8.25
+  ],
+  "host_stalls_incremental": [
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   },
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   },
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   }
+  ]
+ },
+ {
+  "keys": 100000,
+  "kind": "string",
+  "reps": 3,
+  "pause_ms": 33.27,
+  "pause_ms_max": 42.09,
+  "background_write_ms": 1614.9,
+  "snapshot_bytes": 9700029,
+  "stall_ms_oneshot": 215.81,
+  "stall_ms_incremental": 211.89,
+  "stall_ms_incremental_max": 289.92,
+  "rewrite_ms_incremental": 2314.3,
+  "stalls_ms_incremental": [
+   8.2,
+   211.89,
+   289.92
+  ],
+  "host_stalls_incremental": [
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   },
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   },
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   }
+  ]
+ },
+ {
+  "keys": 1000000,
+  "kind": "string",
+  "reps": 3,
+  "pause_ms": 352.35,
+  "pause_ms_max": 385.93,
+  "background_write_ms": 2024.1,
+  "snapshot_bytes": 97000029,
+  "stall_ms_oneshot": 313.01,
+  "stall_ms_incremental": 44.51,
+  "stall_ms_incremental_max": 391.6,
+  "rewrite_ms_incremental": 3413.5,
+  "stalls_ms_incremental": [
+   44.51,
+   38.21,
+   391.6
+  ],
+  "host_stalls_incremental": [
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   },
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   },
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   }
+  ]
+ },
+ {
+  "keys": 10000,
+  "kind": "hash",
+  "reps": 3,
+  "pause_ms": 19.8,
+  "pause_ms_max": 23.96,
+  "background_write_ms": 155.3,
+  "snapshot_bytes": 1930029,
+  "stall_ms_oneshot": 35.4,
+  "stall_ms_incremental": 11.09,
+  "stall_ms_incremental_max": 11.73,
+  "rewrite_ms_incremental": 247.5,
+  "stalls_ms_incremental": [
+   11.09,
+   9.18,
+   11.73
+  ],
+  "host_stalls_incremental": [
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   },
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   },
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   }
+  ]
+ },
+ {
+  "keys": 100000,
+  "kind": "hash",
+  "reps": 3,
+  "pause_ms": 280.53,
+  "pause_ms_max": 290.03,
+  "background_write_ms": 1476.2,
+  "snapshot_bytes": 19300029,
+  "stall_ms_oneshot": 291.81,
+  "stall_ms_incremental": 64.13,
+  "stall_ms_incremental_max": 65.38,
+  "rewrite_ms_incremental": 2142.0,
+  "stalls_ms_incremental": [
+   62.84,
+   65.38,
+   64.13
+  ],
+  "host_stalls_incremental": [
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   },
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   },
+   {
+    "count": 0,
+    "max_ms": 0.0,
+    "total_ms": 0
+   }
+  ]
+ }
+]

@@ -1,0 +1,67 @@
+{
+ "disk_full": {
+  "limit_bytes": 262144,
+  "acked_writes": 4334,
+  "acked_in_full_shard": 1675,
+  "first_refusal_after_s": 4.103,
+  "refusals": {
+   "CLUSTERDOWN": 1,
+   "MISCONF": 199
+  },
+  "refused_writes": 200,
+  "reads_served_while_full": "100/100",
+  "other_shard_writes_after_full": 271,
+  "other_shard_errors": 0,
+  "failovers": 0,
+  "after_restart": {
+   "aof_records_loaded": 1675,
+   "aof_truncated_bytes": 127,
+   "acked_writes_lost": 0
+  }
+ },
+ "partition": [
+  {
+   "min_replicas_to_write": 0,
+   "partition_s": 6.0,
+   "promotion_after_s": 1.322,
+   "majority_outage_s": 2.021,
+   "majority_acked_writes": 28177,
+   "majority_acked_writes_lost": 0,
+   "failures_other_group": 0,
+   "minority_writes_accepted_during_partition": 947,
+   "minority_accepted_for_s": 6.202,
+   "minority_refusals": {
+    "READONLY": 410
+   },
+   "minority_writes_surviving": 0,
+   "old_primary_rejoined_as_replica_after_s": 3.037,
+   "primaries_after": [
+    "127.0.0.1:55067",
+    "127.0.0.1:60771"
+   ],
+   "epoch_after": 1
+  },
+  {
+   "min_replicas_to_write": 1,
+   "partition_s": 6.0,
+   "promotion_after_s": 1.281,
+   "majority_outage_s": 2.013,
+   "majority_acked_writes": 28549,
+   "majority_acked_writes_lost": 0,
+   "failures_other_group": 0,
+   "minority_writes_accepted_during_partition": 371,
+   "minority_accepted_for_s": 2.422,
+   "minority_refusals": {
+    "NOREPLICAS": 600,
+    "READONLY": 406
+   },
+   "minority_writes_surviving": 0,
+   "old_primary_rejoined_as_replica_after_s": 3.037,
+   "primaries_after": [
+    "127.0.0.1:37475",
+    "127.0.0.1:58371"
+   ],
+   "epoch_after": 1
+  }
+ ]
+}
