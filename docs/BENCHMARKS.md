@@ -6,6 +6,11 @@ from [`benchmarks/results/wsl2-i5-7200u.json`](../benchmarks/results/wsl2-i5-720
 every table is in [results.md](benchmarks/results.md). The method is described
 in [ADR-0007](adr/0007-benchmark-methodology.md).
 
+Later phases add sections at the end: Phase 4's before-and-after and
+failover measurements, and Phase 5's round 2. Round 2 covers throughput
+with 1, 3 and 6 shards, key spread, recovery time, failover, chaos, and what
+Phase 5's own changes cost.
+
 ## Summary
 
 | | kvstore | Redis 7.2 | ratio |
@@ -80,8 +85,10 @@ kvstore's percentiles track Redis's at about 2–2.5× up to p99.9. At p99.99
 kvstore reaches 644 ms (its maximum was 645 ms), while Redis's worst request
 took 19 ms. That is a single stall during which all 50 clients waited. Its
 cause wasn't isolated in this phase. It wasn't a rewrite: auto-rewrite needs a
-64 MB AOF, far more than these runs write. Measuring GC and event-loop pauses
-is part of Phase 5's observability work.
+64 MB AOF, far more than these runs write. Phase 5 added collector-pause
+metrics and found that CPython's full collections walk the whole keyspace
+(33–51 ms each at 50k hashes, ADR-0014). That alone doesn't add up to
+645 ms, so this stall remains unexplained.
 
 ### Where the time goes
 
@@ -218,8 +225,8 @@ Each item is ranked by the gap it closes, measured above.
 | 4 | **Incremental keyspace copy** for rewrites: copy in slices between commands, recording writes made in between | 369 ms pause at 1M keys | p99.99 tail at large keyspaces |
 | 5 | Leave the REST API as is | 17× slower than RESP, by design | none (it is the control plane) |
 
-Items 1 and 2 were done in Phase 4, and their measured effect is below.
-Items 3 and 4 move to Phase 5.
+Items 1 and 2 were done in Phase 4, and items 3 and 4 in Phase 5. Their
+measured effects are below.
 
 ## Phase 4: before and after
 
@@ -290,6 +297,277 @@ The "steady writes/s" column comes from 20 closed-loop clients sending one
 write at a time, sized for measuring failover. It isn't a throughput
 benchmark.
 
+## Phase 5: round 2
+
+Same laptop and WSL2 VM as above, kvstore at commit `210ec49`, Redis 7.2.7,
+uvloop 0.22.1. Raw data in
+[`benchmarks/results/phase5/`](../benchmarks/results/phase5/). Every
+measurement also records machine stalls (`benchmarks.stallwatch`: a
+separate process that ticks every 5 ms and reports any gap over 100 ms).
+None of the runs below had one.
+
+### Throughput with 1, 3 and 6 shards
+
+`python -m benchmarks.scaling`: redis-benchmark, 48 clients, SET then GET
+(100-byte values), median of 3 interleaved runs. *Direct* splits the
+clients over the shards, as a cluster-aware client would. *Router* sends
+everything through one router.
+
+| mode | shards | SET, no pipelining | GET, no pipelining | SET, pipeline 16 | GET, pipeline 16 |
+|---|--:|--:|--:|--:|--:|
+| direct | 1 | 12,180 | 15,195 | 19,376 | 49,401 |
+| direct | 3 | 15,595 | 23,190 | 35,372 | 89,014 |
+| direct | 6 | 18,198 | 26,432 | 51,216 | 96,200 |
+| router | 1 | 4,533 | 4,810 | 10,583 | 18,321 |
+| router | 3 | 3,577 | 3,924 | 15,066 | 15,110 |
+| router | 6 | 3,120 | 3,056 | 10,530 | 12,246 |
+
+- **Shards scale until the CPUs run out.** Directly, 3 shards do 1.8× the
+  pipelined work of one. Each of them uses a full core, and with the client
+  that is 3.2–3.4 of the laptop's 4 logical CPUs (2 physical cores with
+  hyper-threading, so less than 4 cores of real capacity). 6 shards, at
+  about 0.65 of a core each, fill all four and add a little more (SET 2.6×,
+  GET 1.9× the single shard). A machine with more cores would keep
+  scaling; this one can't show it. (CPU per process is read from
+  `/proc`, to within about 5%.)
+- **One router doesn't scale.** Its process is at 1.07–1.11 cores in every
+  unpipelined run, so it sets the limit, and more shard groups make it
+  slower (4,533 → 3,120 SETs/s). Each client's batch is split into more,
+  smaller per-group batches, so there are more round trips for the same
+  work. Routers are stateless (ADR-0004), so the answer is several
+  routers behind a load balancer, or a cluster-aware client. Neither was
+  measured here.
+- Spreads are wide on this machine: up to 62k–111k GETs/s for one point.
+  The medians carry the comparisons, and no difference within a spread is
+  claimed.
+
+### How evenly keys spread
+
+`python -m benchmarks.distribution`: 1M keys on the ring. The balance is
+reported for the default group ids (`shard-1`, ...) and, since it depends on
+where ids happen to hash, as the median and 95th percentile over 200
+clusters with random ids.
+
+| groups | virtual nodes | hottest group vs fair share, default ids | same, random ids: median (p95) | keys moved when adding a group: median [range] | ideal |
+|--:|--:|--:|--:|--:|--:|
+| 3 | 10 | 1.29× | 1.25× (1.57×) | 24.9% [12–43%] | 25% |
+| 3 | 100 | **1.19×** | 1.07× (1.19×) | 24.8% [19–30%] | 25% |
+| 3 | 500 | 1.01× | 1.04× (1.08×) | 25.0% [22–28%] | 25% |
+| 6 | 10 | 1.35× | 1.39× (1.80×) | 13.7% [7–26%] | 14.3% |
+| 6 | 100 | 1.10× | 1.12× (1.23×) | 14.3% [11–18%] | 14.3% |
+| 6 | 500 | 1.08× | 1.06× (1.10×) | 14.3% [13–16%] | 14.3% |
+
+- A cluster's capacity is set by its hottest shard. With the default 100
+  virtual nodes, a random 3-group cluster puts about 7% more than a fair
+  share on its hottest group, and 19% at the 95th percentile. **The default
+  ids happen to land there too** (1.19×). With 500 virtual nodes that
+  becomes 1–8% (p95 at most 10%).
+- Adding a group moves close to the ideal share of keys on median, and
+  only to the new group (checked on 20,000 keys for every configuration).
+  More virtual nodes narrow the range around the median.
+- The cost is a bigger ring (3,000 points instead of 600 for 6 groups) with
+  O(log n) lookups: 0.3–0.8M lookups/s in every configuration, with no trend
+  above the noise.
+- **Recommendation:** `KV_VIRTUAL_NODES=500` for new clusters. The default
+  stays 100, because changing it would re-map the keys of a cluster whose
+  router starts without a saved `cluster.json`.
+
+### Recovery time against log size
+
+`python -m benchmarks.recovery`: SETs with 100-byte values through pipelined
+RESP, a clean stop, and three restarts. The load time is the node's own
+(`load_duration_ms`: reading the files and rebuilding the keyspace), median
+of 3; Redis's is the one it logs. Automatic rewrites were off on both, so
+the AOF rows replay the whole log.
+
+| writes | keys | kvstore: AOF replay | kvstore: snapshot | Redis 7.2: AOF | Redis 7.2: after a rewrite |
+|--:|--:|--:|--:|--:|--:|
+| 125,000 | 125,000 | 3.38 s (18.8 MB) | 0.67 s (15.8 MB) | 0.18 s | 0.19 s |
+| 250,000 | 250,000 | 6.08 s (37.8 MB) | 1.91 s (31.6 MB) | 0.44 s | 0.41 s |
+| 500,000 | 500,000 | 10.27 s (75.8 MB) | 2.86 s (63.4 MB) | 0.85 s | 0.52 s |
+| 1,000,000 | 1,000,000 | **23.8 s** (152 MB) | **7.2 s** (127 MB) | 1.59 s | 1.05 s |
+| 1,000,000 | 100,000 (overwrites) | 23.6 s (150 MB) | **0.48 s** (12.6 MB) | 1.24 s | 0.11 s |
+
+- **Both grow linearly.** Replaying costs kvstore 20–27 µs a record, and a
+  snapshot 4–8 µs a key. A whole restart takes 0.6–1.1 s more than the load
+  (interpreter start-up, imports, listeners; polled every 0.1 s).
+- **A snapshot pays off when keys are overwritten.** The log grows with
+  writes and a snapshot only with keys: 1M writes over 100k keys replay in
+  23.6 s from the log, but load in 0.48 s from a snapshot, 49× faster. That
+  is what the automatic rewrite is for.
+- **Redis loads 15× faster from its AOF and 7× faster from its snapshot.**
+  Replaying a record in kvstore means parsing RESP in Python (about a third
+  of the time; see the AOF record below) and running the command through the
+  engine. The file sizes aren't comparable: Redis's RDB base compresses the
+  benchmark's repetitive 100-byte values with LZF (25 MB against 127 MB at
+  1M keys).
+- **`BGREWRITEAOF` answered in 11–33 ms** in every kvstore row (Redis:
+  6–10 ms). Before the old AOF was closed off the event loop, one run of
+  this benchmark waited more than 10 s for it (commit `49423cb`).
+
+### Failover, round 2
+
+`python -m benchmarks.failover`, the Phase 4 setup (3 groups of a primary and
+a replica, 20 writers, `kill -9` of one primary, restarted 4 s later), 5 runs
+per row. One change to the method: **the kill now comes at a random point
+of the heartbeat cycle.** Detection takes the dead-after timeout minus the
+time since the last heartbeat, and a kill at a fixed time after start-up hit
+the same point of the cycle in every run. Phase 4's runs clustered
+accordingly: four of five at 1.53–1.57 s in one mode, and four of five at
+1.98–2.05 s in the other, with the same code. So its 1.57 s median reflected
+one alignment, not the distribution.
+
+| profile | replication | promotion, median (range) | outage, median (max) | acked writes lost | other groups' failures | old primary rejoined |
+|---|---|--:|--:|--:|--:|--:|
+| default (heartbeat 0.5 s, dead after 2 s) | asynchronous | **1.74 s** (1.69–1.92) | 1.85 s (1.93) | **0** of 197,265 | 0 | 5 / 5 |
+| default | `KV_WAIT_REPLICAS=1` | 1.76 s (1.50–1.92) | 6.03 s (6.36) | **0** of 109,098 | 0 | 5 / 5 |
+| fast (heartbeat 0.1 s, dead after 0.5 s) | asynchronous | **0.47 s** (0.43–0.52) | 0.48 s (0.53) | **0** of 214,070 | 0 | 5 / 5 |
+| fast | `KV_WAIT_REPLICAS=1` | 0.51 s (0.45–3.41) | 5.69 s (5.94) | **0** of 131,889 | 0 | 5 / 5 |
+
+- **Promotion now follows the model.** In the default profile, the later
+  the kill came, the sooner the promotion: the runs with the largest random
+  delay (0.45 s) promoted after 1.50–1.56 s, and those with the smallest
+  (under 0.1 s) after 1.92 s. That is the dead-after timeout of 2 s, minus
+  the time since the last heartbeat.
+- **No acknowledged write was lost in 20 kills**, and no other group saw a
+  failed write. As in Phase 4, that is the sub-millisecond replication lag
+  on loopback, not a guarantee of asynchronous replication.
+- **One run of 20 was slow:** 3.41 s in the fast profile. The manager's
+  last successful heartbeat to the dead primary came 2.9 s *after* the kill,
+  which a dead process can't have answered. The router's event loop must
+  have been stalled around the kill, and then read a reply the primary had
+  sent before dying. That is the third multi-second stall of the router seen
+  in this phase (the others are in ADR-0015). Its cause isn't established:
+  no failover had happened yet, so it wasn't the config save.
+
+### Chaos: a full disk and a network partition
+
+`python -m benchmarks.chaos`. Every node is its own process, and the faults
+come from the operating system and the fault proxy (ADR-0015).
+
+**A full disk.** Shard `a` runs under a 256 KiB file-size limit
+(`RLIMIT_FSIZE`), so once its AOF reaches it, `write()` fails as on a full
+disk. Clients keep writing through the router.
+
+| | |
+|---|---|
+| first refused write | after 4.1 s |
+| refusals | 1 `CLUSTERDOWN` (the batch whose commit failed: its connection is dropped, so no reply claims success), then 199 `MISCONF` |
+| reads from the full shard | **100 of 100 served** |
+| the other shard | 271 writes, 0 errors |
+| failovers | 0 (the node answers, so it isn't dead) |
+| after `kill -9` and a restart without the limit | 1,675 records loaded, the 127-byte torn tail truncated, **0 acknowledged writes lost** |
+
+**A network partition.** For 6 s, group `a`'s primary is cut off from the
+router, the cluster manager and its replica (heartbeat 0.2 s, dead after
+1 s). Meanwhile 8 clients write through the router, and one client that can
+still reach the old primary keeps writing to it: the minority side.
+
+| | `min-replicas-to-write 0` | `min-replicas-to-write 1` |
+|---|--:|--:|
+| replica promoted, after the cut | 1.32 s | 1.28 s |
+| longest wait for the majority's writes to `a` | 2.02 s | 2.01 s |
+| writes the majority side acknowledged, lost | **0** of 28,177 | **0** of 28,549 |
+| writes to the other group that failed | 0 | 0 |
+| writes the isolated primary accepted during the cut | 947, for 6.2 s | **371, for 2.4 s**, then `NOREPLICAS` |
+| of those, still there after the heal | 0 | 0 |
+| old primary back as a replica, after the heal | 3.0 s | 3.0 s |
+| epoch after | 1 | 1 |
+
+- **Split brain is bounded, not prevented.** An isolated primary can't know
+  it has been replaced. Without fencing it accepted every write for the
+  whole partition, and all 947 were discarded when it rejoined. With
+  `min-replicas-to-write 1` it stopped after 2.4 s, once its replica's
+  acknowledgements were older than `KV_MIN_REPLICAS_MAX_LAG_S` (2.5 s). A
+  shorter lag limit shrinks the window, at the price of refusing writes
+  whenever the replica is merely slow.
+- The majority's wait (2.0 s) is longer than the promotion (1.3 s).
+  Requests already sent to the old primary wait out the router's 2 s
+  request timeout and then fail: a write that timed out is never retried,
+  since it may have been applied (ADR-0011). The clients' next writes go
+  to the new primary.
+- No acknowledged write of the majority side was lost, and the other group
+  never noticed.
+
+### What Phase 5's own changes cost
+
+**The AOF record** (`python -m benchmarks.micro`, one `SET` with a 16-byte
+key and a 64-byte value; absolute times vary by ±15% between runs on this
+laptop, and an earlier run gave similar ratios: 0.68×, 0.42×, 1.50×):
+
+| | v2 (JSON, kvstore 0.3) | v3 (RESP) | v3 / v2 |
+|---|--:|--:|--:|
+| encode a record | 4.59 µs | 2.83 µs | 0.62× |
+| encode, with a replica attached | 6.76 µs | 3.61 µs | 0.53× |
+| decode a record (replay) | 5.38 µs | 7.90 µs | **1.47×** |
+| record size | 102 B | 120 B | 1.18× |
+
+Writes got cheaper, especially with replicas, where v2 encoded every
+write twice. Replay got slower: RESP is parsed in Python, while JSON's
+decoder is C. The recovery table above shows what that means for a restart.
+
+**Metrics.** Recording a command costs 0.57 µs (a labelled
+`prometheus_client` histogram: 3.0 µs). The timing around it (two clock
+reads, the label, the extra call) brings the total to about 2 µs per
+command:
+- a py-spy profile under pipelined load (a one-off) put 5% of the server's
+  samples in metrics code;
+- `benchmarks.metrics_overhead` (redis-benchmark with 16-deep pipelines,
+  metrics on and off alternating) measured the server's CPU per request
+  with metrics on at +2.6 µs (+8.5%) before commit `612173a` and +2.1 µs
+  (+6.8%) after it, 5 runs each. That commit made the path simpler; its
+  0.5 µs is within the noise, so no speed-up is claimed for it;
+- the final run, 7 runs each during a slower spell of the machine (31–51 µs
+  per request for identical settings), measured −3.8 µs, inside its own
+  noise.
+
+Unpipelined, requests cost about 75 µs each, and the difference is lost in
+the noise. Throughput is noisier still: the run with +8.5% CPU per request
+showed 16% less throughput.
+
+**Incremental snapshots** (`python -m benchmarks.pause`, in-process with
+`appendfsync no`, 3 runs; the stall is the longest gap a ticker coroutine
+saw while a whole rewrite ran):
+
+| value type | keys | one-shot copy (Phase 3) | longest stall, one-shot | longest stall, incremental: each run | whole rewrite, incremental |
+|---|--:|--:|--:|--:|--:|
+| string, 64 B | 10,000 | 3.0 ms (2.8) | 15.6 ms | 8.8, 5.7, 8.3 ms | 58 ms |
+| string, 64 B | 100,000 | 33.3 ms (32.8) | 215.8 ms | 8.2, **211.9**, **289.9** ms | 2,314 ms |
+| string, 64 B | 1,000,000 | 352 ms (369) | 313.0 ms | 44.5, 38.2, **391.6** ms | 3,414 ms |
+| hash, 10 fields | 10,000 | 19.8 ms (35.7) | 35.4 ms | 11.1, 9.2, 11.7 ms | 248 ms |
+| hash, 10 fields | 100,000 | 281 ms (475) | 291.8 ms | 62.8, 65.4, 64.1 ms | 2,142 ms |
+
+- **Most incremental rewrites stall commands for 6–65 ms** where the
+  one-shot copy stalls them for 16–313 ms. At 1M keys that is 38–45 ms
+  instead of a third of a second.
+- **3 of the 15 incremental runs stalled for 212–392 ms.** They coincided
+  with heavy writeback on the VM's disk (each run writes snapshots of up to
+  97 MB with `appendfsync no`). No machine-wide stall was recorded, so the
+  event loop itself was blocked, most likely in a filesystem call it still
+  makes: the manifest's fsync when a rewrite starts and ends, or deleting
+  the old files. A traced rerun at 100k keys, timing each of those steps,
+  saw 8.6–13.9 ms and no step over 20 ms, so the cause isn't pinned down.
+  Moving the manifest and deletions off the event loop is the next step.
+- **The one-shot copy got cheaper for hashes** (475 → 281 ms at 100k),
+  because snapshot records are now tuples (ADR-0014).
+- **The whole rewrite takes longer** (up to 3.4 s at 1M keys), since the
+  copy is spread out and competes with the writer thread. Commands run
+  meanwhile, which is the point.
+
+**A small fsync next to other writers** (`python -m benchmarks.fsync_stall`:
+`ClusterConfig.save`, which writes, fsyncs and renames `cluster.json`,
+every 50 ms):
+
+| | saves | median | p90 | max |
+|---|--:|--:|--:|--:|
+| idle | 60 | 8.5 ms | 14.3 ms | 20.7 ms |
+| 7 AOF-like writers (1 MB/s each, fsync every second) | 60 | 7.8 ms | 16.6 ms | 44 ms |
+| one unthrottled writer | 8 in 90 s | 9.0 ms | — | **70.3 s** |
+
+Normal AOF traffic doesn't stall it, but a bulk writer on the same disk
+can hold a small fsync for over a minute. Hence the manager no longer
+saves the config on the router's event loop (ADR-0015).
+
 ## Reproduce
 
 ```bash
@@ -311,6 +589,18 @@ python -m benchmarks.report benchmarks/results/latest.json
 # Phase 4: failover under load (~10 min for the three profiles above)
 python -m benchmarks.failover --runs 5 --wait-replicas 0 1 --out benchmarks/results/failover-default.json
 python -m benchmarks.failover --runs 5 --heartbeat 0.1 --dead-after 0.5 --out benchmarks/results/failover-fast.json
+
+# Phase 5: round 2 (about 1.5 h in all; R=redis-7.2.7/src, OUT=benchmarks/results/phase5)
+python -m benchmarks.scaling --redis-benchmark $R/redis-benchmark --out $OUT/scaling.json
+python -m benchmarks.distribution --out $OUT/distribution.json
+python -m benchmarks.recovery --redis-server $R/redis-server --out $OUT/recovery.json
+python -m benchmarks.failover --runs 5 --wait-replicas 0 1 --out $OUT/failover-default.json
+python -m benchmarks.failover --runs 5 --wait-replicas 0 1 --heartbeat 0.1 --dead-after 0.5     --out $OUT/failover-fast.json
+python -m benchmarks.chaos --out $OUT/chaos.json
+python -m benchmarks.pause --out $OUT/pause.json
+python -m benchmarks.micro --out $OUT/micro.json
+python -m benchmarks.metrics_overhead --redis-benchmark $R/redis-benchmark --reps 7 --out $OUT/metrics-overhead.json
+python -m benchmarks.fsync_stall --out $OUT/fsync-stall.json
 ```
 
 Run it on Linux, with nothing else running on the machine. On Windows,

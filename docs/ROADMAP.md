@@ -70,16 +70,45 @@ The plan (ADR-0008 to ADR-0010):
 - [ ] Stretch, not done: Raft for the cluster config (the manager is a single process;
       see ADR-0009), N/R/W quorum reads and writes
 
-## Phase 5: Observability and chaos testing
+## Phase 5: Observability and chaos testing ✅ (v0.5.0)
 
 Carried over from the Phase 3 findings:
-- [ ] Cheaper AOF record encoding (JSON today); writes cost 36% of throughput
-- [ ] An incremental keyspace copy for rewrites and full resyncs (369 ms pause at 1M keys)
+- [x] AOF records in RESP, encoded once for the log and the replicas (ADR-0013): a record costs
+      0.62× as much to encode, 0.53× with a replica attached; replaying one is 1.47× slower
+- [x] An incremental keyspace copy for rewrites and full resyncs, with CPython's cycle collector
+      kept out of it (ADR-0014): most rewrites of 1M keys stall commands for 38–45 ms instead of
+      313 ms; 3 runs of 15 still stalled for 212–392 ms under heavy disk writeback
 
 Planned:
-- [ ] Prometheus `/metrics`, Grafana dashboard
-- [ ] Chaos tests: kill nodes, add latency, simulate partitions
-- [ ] Benchmarks (round 2): scaling with the number of shards, failover time, recovery time
+- [x] Prometheus `/metrics` on every node, about 2 µs per command (ADR-0012)
+- [x] docker-compose with Prometheus 3.5 and Grafana 12.1, a provisioned 28-panel dashboard,
+      checked live during a real failover
+- [x] Chaos tests (ADR-0015): a fault proxy (latency, partitions) and real processes (a full
+      disk, `kill -9`). In a 6 s partition the majority side lost none of ~28k acknowledged writes;
+      `min-replicas-to-write 1` stopped the isolated primary after 2.4 s
+- [x] Benchmarks, round 2: throughput with 1, 3 and 6 shards (shards scale to the CPUs; one
+      router doesn't), key spread for 10/100/500 virtual nodes, recovery time against log size,
+      failover time (1.74 s median, 0 acknowledged writes lost in 20 kills)
+
+Found and fixed along the way, each with a test that fails without the fix:
+- [x] 100 ms of latency failed over a healthy primary (the heartbeat timeout)
+- [x] A full disk stopped a node from serving reads (0 of 100)
+- [x] The cluster config was fsynced on the router's event loop, mid-failover
+- [x] Starting a rewrite fsynced the old AOF on the event loop (`BGREWRITEAOF` took up to 669 ms,
+      once over 10 s; now 11–38 ms)
+- [x] CPython's collector could stay frozen after a snapshot (a second `BGREWRITEAOF`, or a node
+      stopped mid-resync); found by CI on Linux
+- [x] `INFO` reported no rewrite while its keyspace was still being copied
+- [x] Benchmark method: the failover kill was phase-locked to the heartbeat, and the pause
+      benchmark's one-shot copy wasn't one-shot after the first run
+- [x] 445 tests, 95% coverage, mypy --strict
+
+Open, from these measurements:
+- [ ] Several routers, or a cluster-aware client: one router is the ceiling (1 core)
+- [ ] The manifest's fsync and file deletions off the event loop (the remaining rewrite stalls)
+- [ ] Multi-second stalls of the router's event loop, seen 3 times on this machine; cause unknown
+- [ ] A faster AOF decoder: replay is 20–27 µs a record (15× Redis), a third of it decoding
+- [ ] `KV_VIRTUAL_NODES=500` for new clusters (the hottest group: 1.19× its share → 1.01×)
 
 ## Phase 6: Write-up
 

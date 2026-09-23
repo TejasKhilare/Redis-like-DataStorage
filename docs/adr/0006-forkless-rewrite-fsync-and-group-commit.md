@@ -1,6 +1,7 @@
 # ADR-0006: Rewrite without fork(), fsync policies, and group commit
 
-**Status:** accepted (Phase 2)
+**Status:** accepted (Phase 2). In Phase 5, ADR-0014 replaced the one-shot
+copy of step 1 with an incremental one, and ADR-0013 the record format.
 
 ## Context
 The Phase 1 AOF grew forever, called `flush()` without ever calling `fsync`,

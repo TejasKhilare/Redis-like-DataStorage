@@ -16,14 +16,19 @@ Sentinel watching every group. It works in three steps.
 1. **Heartbeats.** It sends `INFO replication` to every node every
    `KV_HEARTBEAT_INTERVAL_S` (default 0.5 s). A node silent for
    `KV_SUSPECT_AFTER_S` is *suspect*, and after `KV_DEAD_AFTER_S` (2 s) it
-   is *dead*. The heartbeat client's timeout is shorter than the interval,
-   so a hung node looks the same as a dead one.
+   is *dead*. A reply slower than the suspect threshold counts as missing,
+   so a hung node looks the same as a dead one. *(Amended in Phase 5: the
+   timeout used to be shorter than the heartbeat interval, and a chaos test
+   showed that 100 ms of latency then failed over a healthy primary;
+   ADR-0015.)*
 2. **Failover.** When a group's primary is dead:
    1. it picks the healthy replica with the highest replication offset, the
       one that has lost the fewest writes;
    2. it promotes it with `REPLICAOF NO ONE EPOCH <e+1>`;
-   3. it saves the new config atomically (`cluster.json`), hands it to the
-      router at once, and points the other replicas at the new primary.
+   3. it hands the new config to the router at once, saves it atomically
+      (`cluster.json`) in the background, and points the other replicas at
+      the new primary. *(Amended in Phase 5: the save used to come first,
+      with its fsync on the router's event loop; ADR-0015.)*
 
    A requested failover (`POST /v1/cluster/shards/{id}/failover`) first waits,
    for up to 1 s, for a replica to catch up to the primary's offset, so a

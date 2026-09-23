@@ -15,9 +15,14 @@ manifest file that keeps recovery correct no matter when a crash happens. Each
 node also serves a **FastAPI control plane** for REST access, health checks
 and introspection.
 
+Every node exposes **Prometheus metrics**, and `docker compose up` brings the
+cluster up with Grafana and a ready-made dashboard. It is **chaos-tested**
+against real processes: network partitions, a slow node, a disk that fills
+up, and `kill -9`.
+
 ![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
-![tests](https://img.shields.io/badge/tests-358%20passing-brightgreen)
-![coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)
+![tests](https://img.shields.io/badge/tests-445%20passing-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-blue)
 
 ## Architecture
@@ -83,13 +88,15 @@ flowchart LR
     with `OOM`, while `DEL` still works.
 - A command never evicts the keys it just wrote.
 
-**Persistence** (see ADR-0005 and ADR-0006)
+**Persistence** (see ADR-0005, 0006, 0013 and 0014)
 - The AOF records the *effect* of each command, not the request:
   - `EXPIRE` is logged as an absolute `PEXPIREAT`;
   - a random `SPOP` is logged as the `SREM` of the members it took;
   - evictions are logged as `DEL`.
-- Every record carries a **CRC32**. On restart, a torn final record from a
-  crash is cut off; corruption anywhere else stops startup.
+- Records are **RESP**, the bytes the replication stream carries, so each
+  write is encoded once for both. Every record carries a **CRC32**. On
+  restart, a torn final record from a crash is cut off; corruption anywhere
+  else stops startup. Older AOFs (JSON records) still load.
 - Three fsync policies:
   - `always`: nothing acknowledged is ever lost;
   - `everysec`: a background thread fsyncs once a second;
@@ -97,14 +104,20 @@ flowchart LR
 - **Group commit**: a batch of pipelined commands shares one fsync, and no
   reply is sent until its write is on disk.
 - **Background rewrite without `fork()`**:
-  1. copy the keyspace at a single point in time (O(n) in memory);
-  2. write it to a binary, CRC-checked snapshot on a separate thread;
+  1. copy the keyspace as of one instant, **incrementally**: values are
+     copied in 2 ms slices between commands, and a copy-on-write barrier
+     copies any key a command is about to change first;
+  2. write the copy to a binary, CRC-checked snapshot on a separate thread;
   3. switch to a new AOF file and record the new set of files in a manifest
      that is replaced atomically.
 
   The rewrite also starts automatically when the AOF has doubled in size.
-- If an AOF write fails, the node refuses further writes with `MISCONF`
-  instead of silently losing data. Reads keep working.
+  CPython's cycle collector is frozen during the copy (it was causing the
+  remaining stalls).
+- If an AOF write fails (a full disk, say), the node refuses further writes
+  with `MISCONF` instead of silently losing data. Reads keep working: tests
+  check it, and so does a run against a real file-size limit
+  (`benchmarks.chaos`).
 
 **Replication** (ADR-0008)
 - Redis's protocol: `PSYNC` with full resync (a snapshot at an offset) or
@@ -120,12 +133,13 @@ flowchart LR
 **Failover** (ADR-0009)
 - The router's cluster manager sends heartbeats (healthy, then suspect, then
   dead) and promotes the replica with the highest offset under a new
-  **epoch**. It saves the config and switches routing at once.
+  **epoch**. Routing switches at once; the config is saved in the background.
 - Nodes refuse a stale epoch. A replaced primary that returns is fenced,
   demoted and resynced.
-- Measured: a `kill -9` of a primary under load recovers in ~1.6 s with the
-  default timeouts. The other groups see no errors, and **no acknowledged
-  write was lost** (see [BENCHMARKS.md](docs/BENCHMARKS.md#phase-4-failover-under-load)).
+- Measured: a `kill -9` of a primary under load is failed over in 1.74 s
+  (median of 5) with the default timeouts, and 0.47 s with fast ones. The
+  other groups see no errors, and **no acknowledged write was lost in 20
+  kills** (see [BENCHMARKS.md](docs/BENCHMARKS.md#failover-round-2)).
 - Optional write concern: `KV_WAIT_REPLICAS=1` acknowledges a write only once
   a replica has it.
 
@@ -141,6 +155,39 @@ flowchart LR
   only when a write can't be applied twice.
 - **Group commit across clients.** Every connection served in one event-loop
   iteration shares one AOF fsync, as in Redis.
+
+**Observability** (ADR-0012)
+- `GET /metrics` on every node, in the Prometheus format: ops/s and latency
+  histograms per command, errors, keys, memory, expiries and evictions, AOF
+  size and fsync latency, group commit, replication offset and lag per
+  replica, node health and failovers (from the router), and collector
+  pauses.
+- Recording is plain Python on the hot path, about 2 µs per command in all
+  (a labelled `prometheus_client` histogram alone costs 3 µs). Everything
+  that already exists elsewhere is read only when scraped.
+- `docker compose up` adds Prometheus and Grafana, with a provisioned
+  dashboard of 28 panels. It was checked against a live cluster during a
+  real failover:
+
+<picture>
+  <img alt="The kvstore Grafana dashboard during a failover: ops/s, latency, keys, memory, node health, roles swapping, replication lag, AOF and fsync" src="docs/observability/grafana-dashboard.png" width="800">
+</picture>
+
+**Chaos testing** (ADR-0015)
+- A fault proxy that delays, partitions and heals the links to a primary,
+  and runs with real processes: a disk that fills up (`RLIMIT_FSIZE`) and
+  `kill -9`.
+- Measured: with its disk full, a node refuses writes (`MISCONF`), still
+  serves reads (100 of 100), and loses no acknowledged write across a
+  `kill -9`. When a
+  primary is partitioned away for 6 s, the majority side loses none of its
+  ~28k acknowledged writes. The isolated primary's writes are discarded
+  when it rejoins; `min-replicas-to-write 1` stops it taking them after
+  2.4 s (see [BENCHMARKS.md](docs/BENCHMARKS.md#chaos-a-full-disk-and-a-network-partition)).
+- It found real bugs, each now covered by a test: a 100 ms latency spike
+  triggered a failover, and a full disk stopped a node from serving reads.
+  Checking the dashboard during a failover also showed that saving the
+  cluster config could stall the router.
 
 ## Quickstart
 
@@ -159,6 +206,14 @@ python scripts/run_cluster.py --replicas 1         # 3 groups of primary + repli
 Kill a primary (Ctrl+C its process, or `kill -9`), then watch
 `GET http://127.0.0.1:8000/v1/cluster/nodes`. Within about 2 s its replica is
 the primary, and writes through the router go on.
+
+Or with Docker, the same cluster plus Prometheus and Grafana:
+
+```bash
+docker compose up --build        # Grafana at http://localhost:3000, dashboard "kvstore"
+docker compose kill shard-1      # watch the failover on the dashboard
+docker compose start shard-1     # it rejoins as a replica
+```
 
 ```text
 $ redis-cli -p 7000                    # or: python -m kvstore.cli --port 7000
@@ -220,14 +275,25 @@ open-loop latency sweep. Full results, charts and methodology:
 | 90% GET, pipeline depth 64 | 53,766 ops/s | 213,894 ops/s (client-bound) |
 | 100% SET, `appendfsync always` | 406 ops/s | 7,389 ops/s |
 | 100% SET, `appendfsync everysec` | 12,679 ops/s | 40,565 ops/s |
-| Rewrite pause, 1M keys | 369 ms (no fork) | uses fork() |
+| Rewrite stall, 1M keys | 38–45 ms (313 ms before Phase 5, no fork) | uses fork() |
 
 kvstore reaches 44% of Redis's throughput when clients wait for each reply,
-and about 12% when both are CPU-bound. The benchmarks also found the next
-optimization targets:
-- **Group commit across clients** (`always` is 18× behind Redis).
-- **Pipelining in the router**, which costs 77% of throughput today.
-- **An incremental snapshot copy.**
+and about 12% when both are CPU-bound. Every bottleneck round 1 found was
+then fixed and measured again: the router's pipelining (**6.4×**) and group
+commit across clients (**~13 writes per fsync instead of 1**) in Phase 4,
+and in Phase 5 cheaper AOF records (**0.62×** to encode a write, 0.53× with
+a replica) and an incremental snapshot copy.
+
+**Round 2** (Phase 5) measures the cluster rather than one node:
+
+| | |
+|---|---|
+| Pipelined GETs, direct to 1 → 3 → 6 shards | 49k → 89k → 96k ops/s, until the laptop's 4 logical CPUs are full |
+| The same through one router | 18k → 15k → 12k ops/s: one router is the ceiling (1 core) |
+| Recovery, 1M writes over 100k keys | 23.6 s replaying the log, **0.48 s** from a snapshot |
+| Failover after `kill -9`, default timeouts | **1.74 s** (median of 5), 0 acknowledged writes lost in 20 kills |
+| A 6 s network partition | 0 of ~28k acknowledged writes lost on the majority side |
+| Hottest of 3 shards, 100 → 500 virtual nodes | 1.19× → 1.01× its fair share |
 
 ```bash
 python -m benchmarks.load_gen --port 6379 -c 50 -P 16     # quick measurement
@@ -248,17 +314,21 @@ src/kvstore/
 ├── protocol/               RESP codec, TCP server (cross-client group commit), multiplexed client
 ├── replication/            stream + backlog, primary (PSYNC, WAIT), replica link, node roles
 ├── cluster/                topology (groups, epochs), router, manager (failover), migration
-├── api/ schemas/ services/ FastAPI control plane
+├── observability/          metrics (Prometheus text format), collectors, GC policy
+├── api/ schemas/ services/ FastAPI control plane (and GET /metrics)
 └── cli.py                  redis-cli style client
-benchmarks/                 load generator, suite, failover chaos run, report, results
-tests/                      358 tests: unit, integration, replication, failover, rebalancing
+deploy/                     Prometheus config, Grafana provisioning and dashboard
+benchmarks/                 load generator, suite, scaling, recovery, failover, chaos
+                            (fault proxy, disk limits), micro, stall watch, report, results
+tests/                      445 tests: unit, integration, replication, failover, rebalancing,
+                            chaos (partitions, a slow node, a full disk), metrics, the dashboard
 docs/                       benchmarks, roadmap, architecture decision records
 ```
 
 ## Development
 
 ```bash
-python -m pytest --cov     # 358 tests, ~1 min
+python -m pytest --cov     # 445 tests, ~2 min
 ruff check . && mypy       # lint + strict typing
 ```
 
@@ -275,9 +345,13 @@ ruff check . && mypy       # lint + strict typing
 - [ADR-0009](docs/adr/0009-failure-detection-and-failover-with-epochs.md): failure detection and failover with epochs
 - [ADR-0010](docs/adr/0010-rebalancing-with-ask-redirects.md): rebalancing that moves only the keys that change owner
 - [ADR-0011](docs/adr/0011-multiplexed-router-and-cross-client-group-commit.md): a multiplexed router and group commit across clients
+- [ADR-0012](docs/adr/0012-cheap-metrics-and-a-provisioned-dashboard.md): cheap per-command metrics, and a provisioned dashboard
+- [ADR-0013](docs/adr/0013-aof-records-in-resp.md): AOF records in RESP, encoded once for the log and the replicas
+- [ADR-0014](docs/adr/0014-incremental-snapshots-and-the-cycle-collector.md): incremental snapshots, and keeping the cycle collector out of the way
+- [ADR-0015](docs/adr/0015-chaos-testing-with-a-fault-proxy-and-real-processes.md): chaos testing with a fault proxy and real processes
 
-The roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md). Phase 5 adds metrics,
-dashboards and chaos tests.
+The roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md). Phase 6 is the
+write-up: a design document on the trade-offs, and a demo.
 
 ## License
 
