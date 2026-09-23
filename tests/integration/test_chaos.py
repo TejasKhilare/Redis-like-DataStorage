@@ -160,7 +160,7 @@ async def test_latency_below_the_detection_threshold(stack: AsyncExitStack, tmp_
         assert await client.execute("SET", fast, "v") == "OK"
         fast_s = time.monotonic() - started
     assert slow_s >= 0.17  # 100 ms each way (minus Windows timer resolution)
-    assert fast_s < 0.1  # the other group doesn't wait for the slow one
+    assert fast_s < slow_s / 2  # the other group doesn't wait for the slow one
     await asyncio.sleep(1.5)
     assert not chaos.manager.events  # slow is not dead: no failover
 

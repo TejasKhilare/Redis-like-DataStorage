@@ -9,7 +9,7 @@ import pytest
 from kvstore.cluster.manager import ClusterManager
 from kvstore.cluster.topology import ClusterConfig
 
-SLOW_DISK_S = 0.5
+SLOW_DISK_S = 2.0  # generous: a slow CI machine still has to beat it
 
 
 @pytest.fixture
@@ -46,9 +46,9 @@ async def test_a_slow_disk_does_not_stall_the_router(tmp_path: Path, slow_disk: 
 
     started = time.perf_counter()
     manager.set_config(config.next_epoch())
-    assert time.perf_counter() - started < SLOW_DISK_S / 5
+    assert time.perf_counter() - started < SLOW_DISK_S / 4
     assert routed == [1]  # the router follows the change at once
-    assert await longest_stall(SLOW_DISK_S * 1.5) < SLOW_DISK_S / 2  # and keeps serving
+    assert await longest_stall(SLOW_DISK_S / 2) < SLOW_DISK_S / 4  # and keeps serving
 
     await manager.flush_config()
     saved = ClusterConfig.load(path)

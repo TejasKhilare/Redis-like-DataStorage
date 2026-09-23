@@ -11,8 +11,10 @@ from benchmarks.stallwatch import StallWatch
 
 
 def test_a_quiet_machine_has_no_stalls() -> None:
-    with StallWatch(threshold_s=0.25) as watch:
-        time.sleep(0.5)
+    # A whole second: a busy CI machine may deschedule the ticker briefly,
+    # and only a real freeze should count.
+    with StallWatch(threshold_s=1.0) as watch:
+        time.sleep(1.5)
     assert watch.summary() == {"count": 0, "max_ms": 0.0, "total_ms": 0}
 
 

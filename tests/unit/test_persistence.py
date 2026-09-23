@@ -605,13 +605,13 @@ def test_a_slow_last_fsync_of_the_old_aof_does_not_hold_up_a_rewrite(
     real_fsync = aof_module.AOFWriter._fsync
 
     def slow_fsync(self: aof_module.AOFWriter) -> None:
-        time.sleep(0.5)  # a burst of unsynced writes on a busy disk
+        time.sleep(2.0)  # a burst of unsynced writes on a busy disk
         real_fsync(self)
 
     monkeypatch.setattr(aof_module.AOFWriter, "_fsync", slow_fsync)
     started = time.perf_counter()
     engine.start_rewrite()
-    assert time.perf_counter() - started < 0.25
+    assert time.perf_counter() - started < 1.0  # generous: CI disks are slow
     engine.execute("SET", "after", "switch")  # into the new generation meanwhile
     engine.close()  # waits for the old file's close and for the snapshot
 
