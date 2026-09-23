@@ -299,12 +299,16 @@ benchmark.
 
 ## Phase 5: round 2
 
-Same laptop and WSL2 VM as above, kvstore at commit `210ec49`, Redis 7.2.7,
-uvloop 0.22.1. Raw data in
-[`benchmarks/results/phase5/`](../benchmarks/results/phase5/). Every
-measurement also records machine stalls (`benchmarks.stallwatch`: a
-separate process that ticks every 5 ms and reports any gap over 100 ms).
-None of the runs below had one.
+Same laptop and WSL2 VM as above, Redis 7.2.7, uvloop 0.22.1. Raw data in
+[`benchmarks/results/phase5/`](../benchmarks/results/phase5/), whose README
+records which commit produced each file: measuring kept finding bugs, so
+these runs span `210ec49` to `f3b82c0`.
+
+The scaling, metrics, recovery and snapshot-pause runs also record stalls
+of the machine itself (`benchmarks.stallwatch`: a separate process that
+ticks every 5 ms and reports any gap over 100 ms). None of them had one, so
+where a table below shows something stalling, it was that process, not the
+machine.
 
 ### Throughput with 1, 3 and 6 shards
 
