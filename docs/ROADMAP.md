@@ -110,7 +110,13 @@ Open, from these measurements:
 - [ ] A faster AOF decoder: replay is 20–27 µs a record (15× Redis), a third of it decoding
 - [ ] `KV_VIRTUAL_NODES=500` for new clusters (the hottest group: 1.19× its share → 1.01×)
 
-## Phase 6: Write-up
+## Phase 6: Write-up ✅ (v0.6.0)
 
-- [ ] `docs/DESIGN.md` tradeoff analysis (CAP, durability vs. latency, and more)
-- [ ] Demo GIF and resume bullets backed by measured numbers
+- [x] [DESIGN.md](DESIGN.md): the trade-offs, each with the measurement behind it — one core
+      per node, durability against latency, copying a keyspace without `fork()`, CAP under a
+      partition, a router against a smarter client, what instrumentation costs, what Python
+      costs, and the failure modes
+- [x] `scripts/demo.py`: three groups behind a router, hash tags and `CROSSSLOT`, 5,000 writes,
+      then `kill -9` of a primary — recorded as [demo.gif](demo.gif) (promoted in 2.03 s, 0
+      acknowledged writes lost)
+- [x] [HIGHLIGHTS.md](HIGHLIGHTS.md): resume bullets, each linked to the result that backs it

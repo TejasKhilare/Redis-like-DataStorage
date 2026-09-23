@@ -21,9 +21,22 @@ against real processes: network partitions, a slow node, a disk that fills
 up, and `kill -9`.
 
 ![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
-![tests](https://img.shields.io/badge/tests-445%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-446%20passing-brightgreen)
 ![coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-blue)
+
+## Demo
+
+`python scripts/demo.py` starts the cluster below, writes through it, kills a
+primary with `kill -9`, and checks that nothing acknowledged was lost. The
+recording is one real run: the replica was promoted **2.03 s** after the
+primary died, and **0 of 5,000** acknowledged writes went missing.
+
+![A recording of scripts/demo.py: three shard groups start behind a router, writes are routed by key, a cross-group MSET is refused, a primary is killed with kill -9, its replica is promoted in 2.03 seconds, and no acknowledged write is lost](docs/demo.gif)
+
+Why it is built this way, and what each choice costs, is in
+**[docs/DESIGN.md](docs/DESIGN.md)**. The claims above, with the measurement
+behind each one, are in **[docs/HIGHLIGHTS.md](docs/HIGHLIGHTS.md)**.
 
 ## Architecture
 
@@ -320,15 +333,16 @@ src/kvstore/
 deploy/                     Prometheus config, Grafana provisioning and dashboard
 benchmarks/                 load generator, suite, scaling, recovery, failover, chaos
                             (fault proxy, disk limits), micro, stall watch, report, results
-tests/                      445 tests: unit, integration, replication, failover, rebalancing,
+tests/                      446 tests: unit, integration, replication, failover, rebalancing,
                             chaos (partitions, a slow node, a full disk), metrics, the dashboard
-docs/                       benchmarks, roadmap, architecture decision records
+scripts/                    run_cluster.py (a local cluster), demo.py (the recording above)
+docs/                       design notes, benchmarks, roadmap, architecture decision records
 ```
 
 ## Development
 
 ```bash
-python -m pytest --cov     # 445 tests, ~2 min
+python -m pytest --cov     # 446 tests, ~2 min
 ruff check . && mypy       # lint + strict typing
 ```
 
@@ -350,8 +364,11 @@ ruff check . && mypy       # lint + strict typing
 - [ADR-0014](docs/adr/0014-incremental-snapshots-and-the-cycle-collector.md): incremental snapshots, and keeping the cycle collector out of the way
 - [ADR-0015](docs/adr/0015-chaos-testing-with-a-fault-proxy-and-real-processes.md): chaos testing with a fault proxy and real processes
 
-The roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md). Phase 6 is the
-write-up: a design document on the trade-offs, and a demo.
+[docs/DESIGN.md](docs/DESIGN.md) takes the decisions as a whole: what this is
+and isn't, where the trade-offs land (durability against latency, CAP under a
+partition, a router against a smarter client), the failure modes, and what I
+would change next. The roadmap, including what these measurements left open,
+is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## License
 
