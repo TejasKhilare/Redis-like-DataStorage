@@ -432,14 +432,25 @@ class Engine:
             self._snapshot_pause_ms = round(max(self._snapshot_pause_ms, pause), 3)
             return not done
 
+    def wait_rewrite(self) -> None:
+        """Block until a rewrite in progress has finished.
+
+        The engine's wait, not the persistence layer's: an incremental copy
+        is driven from here (:meth:`step_snapshot`), so waiting only for the
+        background write would return while the keyspace is still being
+        copied.
+        """
+        while self.step_snapshot():
+            pass
+        if self._persistence is not None:
+            self._persistence.wait_rewrite()
+        self._release_gc()
+
     def save(self) -> None:
         """SAVE: a rewrite that blocks until the snapshot is on disk."""
         self.start_rewrite()
-        while self.step_snapshot():
-            pass
+        self.wait_rewrite()
         assert self._persistence is not None
-        self._persistence.wait_rewrite()
-        self._release_gc()
         if self._persistence.last_rewrite_status != "ok":
             raise PersistenceError("snapshot failed, see server logs")
 

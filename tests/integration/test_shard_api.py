@@ -108,7 +108,7 @@ async def test_background_rewrite_endpoint(tmp_path: Path) -> None:
         await http.put("/v1/keys/a", json={"value": "1"})
         response = await http.post("/v1/admin/rewrite")
         assert response.status_code == 202
-        app.state.engine.persistence.wait_rewrite()
+        app.state.engine.wait_rewrite()  # the copy runs in slices; wait for all of it
         persistence = (await http.get("/v1/admin/info")).json()["engine"]["persistence"]
         assert persistence["rewrites_completed"] == 1
         assert persistence["last_rewrite_status"] == "ok"
